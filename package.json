@@ -1,0 +1,31 @@
+{
+  "name": "openmanbo",
+  "version": "0.1.0",
+  "description": "An intelligent CLI agent powered by LLMs",
+  "type": "module",
+  "bin": {
+    "manbo": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli/index.ts",
+    "build": "tsc",
+    "start": "node dist/cli/index.js"
+  },
+  "keywords": [
+    "agent",
+    "cli",
+    "llm",
+    "openai"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^14.0.3",
+    "dotenv": "^17.3.1",
+    "openai": "^6.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

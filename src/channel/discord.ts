@@ -88,16 +88,18 @@ export class DiscordChannel implements Channel {
     if (message.author.bot) return;
 
     const isDM = !message.guild;
-    const isMentioned = message.mentions.has(this.client.user!);
+    const botUser = this.client.user;
+    if (!botUser) return;
+    const isMentioned = message.mentions.has(botUser);
 
     // Only respond to DMs or messages that mention the bot
     if (!isDM && !isMentioned) return;
 
     // Strip the bot mention from the message content
     let content = message.content;
-    if (isMentioned && this.client.user) {
+    if (isMentioned && botUser) {
       content = content
-        .replace(new RegExp(`<@!?${this.client.user.id}>`, "g"), "")
+        .replace(new RegExp(`<@!?${botUser.id}>`, "g"), "")
         .trim();
     }
 
@@ -105,7 +107,7 @@ export class DiscordChannel implements Channel {
 
     const inbound: InboundMessage = {
       senderId: message.author.id,
-      senderName: message.author.displayName,
+      senderName: message.author.globalName ?? message.author.username,
       content,
       channelId: message.channelId,
     };

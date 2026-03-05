@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import type { McpConfig } from "../mcp/types.js";
 
 const DEFAULT_DATA_DIR_NAME = ".openmanbo";
 
@@ -26,6 +27,22 @@ export async function readIdentity(
   try {
     const content = await fs.readFile(identityPath, "utf-8");
     return content.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Read `mcp.json` from the .openmanbo storage directory.
+ * Returns the parsed config if the file exists, or undefined otherwise.
+ */
+export async function readMcpConfig(
+  dataDir: string,
+): Promise<McpConfig | undefined> {
+  const mcpPath = path.join(dataDir, "mcp.json");
+  try {
+    const content = await fs.readFile(mcpPath, "utf-8");
+    return JSON.parse(content) as McpConfig;
   } catch {
     return undefined;
   }

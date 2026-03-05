@@ -4,6 +4,7 @@ import type { Channel, ChannelMeta, InboundMessage } from "./types.js";
 import { Agent } from "../kernel/agent.js";
 import { createLLMClient } from "../kernel/llm.js";
 import type { AppConfig } from "../config/env.js";
+import type OpenAI from "openai";
 
 export interface DiscordChannelOptions {
   /** Discord bot token. */
@@ -12,6 +13,13 @@ export interface DiscordChannelOptions {
   appConfig: AppConfig;
   /** Optional system prompt override. */
   systemPrompt?: string;
+  /** MCP tool definitions to expose to the model. */
+  mcpTools?: OpenAI.ChatCompletionTool[];
+  /** Executor for MCP tool calls. */
+  mcpToolExecutor?: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<string>;
 }
 
 /**
@@ -28,6 +36,10 @@ export class DiscordChannel implements Channel {
   private agents: Map<string, Agent> = new Map();
   private appConfig: AppConfig;
   private systemPrompt: string;
+  private mcpTools: OpenAI.ChatCompletionTool[] | undefined;
+  private mcpToolExecutor:
+    | ((name: string, args: Record<string, unknown>) => Promise<string>)
+    | undefined;
 
   constructor(options: DiscordChannelOptions) {
     this.botToken = options.botToken;
@@ -35,6 +47,8 @@ export class DiscordChannel implements Channel {
     this.systemPrompt =
       options.systemPrompt ??
       "You are Manbo, a helpful and concise AI assistant.";
+    this.mcpTools = options.mcpTools;
+    this.mcpToolExecutor = options.mcpToolExecutor;
 
     this.client = new Client({
       intents: [
@@ -77,6 +91,12 @@ export class DiscordChannel implements Channel {
         client: llmClient,
         model: this.appConfig.model,
         systemPrompt: this.systemPrompt,
+        ...(this.mcpTools?.length
+          ? {
+              tools: this.mcpTools,
+              toolExecutor: this.mcpToolExecutor,
+            }
+          : {}),
       });
       this.agents.set(conversationId, agent);
     }

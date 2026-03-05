@@ -3,6 +3,7 @@
 import { Command } from "commander";
 import { loadConfig } from "../config/env.js";
 import { createLLMClient, Agent } from "../kernel/index.js";
+import { DiscordChannel } from "../channel/index.js";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
@@ -88,6 +89,46 @@ program
       }
       process.stdout.write("\n\n");
     }
+  });
+
+// ── discord command: run as a Discord bot ─────────────────────────
+program
+  .command("discord")
+  .description("Start the agent as a Discord bot")
+  .option("--api-key <key>", "OpenAI-compatible API key")
+  .option("--api-base-url <url>", "OpenAI-compatible API base URL")
+  .option("--model <model>", "Model name to use")
+  .option("--bot-token <token>", "Discord bot token")
+  .action(async (opts) => {
+    const config = loadConfig({
+      apiKey: opts.apiKey,
+      apiBaseUrl: opts.apiBaseUrl,
+      model: opts.model,
+      discordBotToken: opts.botToken,
+    });
+
+    if (!config.discordBotToken) {
+      console.error(
+        "Missing Discord bot token. Set DISCORD_BOT_TOKEN environment variable or pass --bot-token.",
+      );
+      process.exit(1);
+    }
+
+    const channel = new DiscordChannel({
+      botToken: config.discordBotToken,
+      appConfig: config,
+    });
+
+    // Graceful shutdown
+    const shutdown = async () => {
+      await channel.stop();
+      process.exit(0);
+    };
+    process.on("SIGINT", () => void shutdown());
+    process.on("SIGTERM", () => void shutdown());
+
+    console.log("🚀 Starting Discord channel…");
+    await channel.start();
   });
 
 program.parse();

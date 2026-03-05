@@ -25,6 +25,7 @@ pnpm dev interactive
 |---|---|
 | `manbo chat <prompt>` | Send a single prompt and get a streamed response |
 | `manbo interactive` (or `manbo i`) | Start an interactive chat session |
+| `manbo discord` | Start the agent as a Discord bot |
 
 ### Global Options
 
@@ -34,10 +35,53 @@ pnpm dev interactive
 | `--api-base-url <url>` | `OPENAI_API_BASE_URL` | Base URL (default: `https://api.openai.com/v1`) |
 | `--model <model>` | `OPENAI_MODEL` | Model name (default: `gpt-4o`) |
 
+### Discord Channel
+
+Run the agent as a Discord bot. The bot responds to direct messages and @mentions in server channels.
+
+```bash
+# Set your Discord bot token
+export DISCORD_BOT_TOKEN=your-bot-token
+
+# Start the bot
+pnpm dev discord
+
+# Or pass the token directly
+pnpm dev discord --bot-token your-bot-token
+```
+
+| Option | Env Variable | Description |
+|---|---|---|
+| `--bot-token <token>` | `DISCORD_BOT_TOKEN` | Discord bot token |
+
+#### Setting Up the Discord Bot
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Create a new application and add a bot
+3. Enable the **Message Content Intent** under the bot settings
+4. Copy the bot token and set it as `DISCORD_BOT_TOKEN`
+5. Invite the bot to your server using the OAuth2 URL generator with the `bot` scope and `Send Messages` + `Read Message History` permissions
+
+## Channels
+
+OpenManbo supports a **channel** architecture (inspired by [openclaw](https://github.com/openclaw/openclaw)) that lets you connect the agent to different messaging platforms. Each channel receives messages from a platform, routes them through the Agent kernel, and sends responses back.
+
+Currently supported channels:
+
+| Channel | Status |
+|---|---|
+| Discord | ✅ Supported |
+
+More channels (Slack, Telegram, etc.) can be added by implementing the `Channel` interface in `src/channel/types.ts`.
+
 ## Project Structure
 
 ```
 src/
+├── channel/       # Channel abstraction & platform implementations
+│   ├── types.ts   # Channel interface definition
+│   ├── discord.ts # Discord channel (discord.js)
+│   └── index.ts
 ├── cli/           # Commander.js CLI entry point
 │   └── index.ts
 ├── config/        # Environment & configuration loading

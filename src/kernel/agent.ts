@@ -1,6 +1,7 @@
 import type OpenAI from "openai";
 import type {
   ChatCompletionMessageParam,
+  ChatCompletionUserMessageParam,
   ChatCompletionChunk,
 } from "openai/resources/chat/completions";
 
@@ -33,11 +34,33 @@ export class Agent {
   }
 
   /**
+   * Build a user message param, optionally prefixing the content with the
+   * speaker's name so the LLM can distinguish participants.
+   */
+  private buildUserMessage(
+    text: string,
+    name?: string,
+  ): ChatCompletionUserMessageParam {
+    const content = name ? `[${name}]: ${text}` : text;
+    return {
+      role: "user",
+      content,
+      ...(name ? { name } : {}),
+    };
+  }
+
+  /**
    * Send a user message and stream the assistant's response.
    * Yields string chunks as they arrive.
+   *
+   * @param userMessage - The text content of the user message.
+   * @param name - Optional speaker name to distinguish between participants.
    */
-  async *chat(userMessage: string): AsyncGenerator<string, void, undefined> {
-    this.messages.push({ role: "user", content: userMessage });
+  async *chat(
+    userMessage: string,
+    name?: string,
+  ): AsyncGenerator<string, void, undefined> {
+    this.messages.push(this.buildUserMessage(userMessage, name));
 
     const stream = await this.client.chat.completions.create({
       model: this.model,
@@ -60,9 +83,12 @@ export class Agent {
 
   /**
    * Send a user message and return the full response at once (non-streaming).
+   *
+   * @param userMessage - The text content of the user message.
+   * @param name - Optional speaker name to distinguish between participants.
    */
-  async run(userMessage: string): Promise<string> {
-    this.messages.push({ role: "user", content: userMessage });
+  async run(userMessage: string, name?: string): Promise<string> {
+    this.messages.push(this.buildUserMessage(userMessage, name));
 
     const response = await this.client.chat.completions.create({
       model: this.model,

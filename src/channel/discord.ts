@@ -120,7 +120,7 @@ export class DiscordChannel implements Channel {
       }
 
       let fullResponse = "";
-      for await (const chunk of agent.chat(inbound.content)) {
+      for await (const chunk of agent.chat(inbound.content, inbound.senderName)) {
         fullResponse += chunk;
       }
 

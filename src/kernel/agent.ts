@@ -3,6 +3,8 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionUserMessageParam,
   ChatCompletionChunk,
+  ChatCompletionTool,
+  ChatCompletionMessageFunctionToolCall,
 } from "openai/resources/chat/completions";
 
 export interface AgentOptions {
@@ -12,6 +14,13 @@ export interface AgentOptions {
   model: string;
   /** System prompt that defines the agent's persona and capabilities */
   systemPrompt?: string;
+  /** Optional tools (e.g. from MCP servers) to expose to the model */
+  tools?: ChatCompletionTool[];
+  /** Called to execute a tool call by name with the given arguments */
+  toolExecutor?: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<string>;
 }
 
 /**
@@ -22,11 +31,17 @@ export class Agent {
   private client: OpenAI;
   private model: string;
   private messages: ChatCompletionMessageParam[];
+  private tools: ChatCompletionTool[] | undefined;
+  private toolExecutor:
+    | ((name: string, args: Record<string, unknown>) => Promise<string>)
+    | undefined;
 
   constructor(options: AgentOptions) {
     this.client = options.client;
     this.model = options.model;
     this.messages = [];
+    this.tools = options.tools?.length ? options.tools : undefined;
+    this.toolExecutor = options.toolExecutor;
 
     if (options.systemPrompt) {
       this.messages.push({ role: "system", content: options.systemPrompt });
@@ -52,6 +67,8 @@ export class Agent {
   /**
    * Send a user message and stream the assistant's response.
    * Yields string chunks as they arrive.
+   * Handles tool calls transparently: tool results are fed back to the model
+   * until the model produces a final text response.
    *
    * @param userMessage - The text content of the user message.
    * @param name - Optional speaker name to distinguish between participants.
@@ -62,27 +79,97 @@ export class Agent {
   ): AsyncGenerator<string, void, undefined> {
     this.messages.push(this.buildUserMessage(userMessage, name));
 
-    const stream = await this.client.chat.completions.create({
-      model: this.model,
-      messages: this.messages,
-      stream: true,
-    });
+    while (true) {
+      const stream = await this.client.chat.completions.create({
+        model: this.model,
+        messages: this.messages,
+        stream: true,
+        ...(this.tools ? { tools: this.tools } : {}),
+      });
 
-    let fullResponse = "";
+      let fullResponse = "";
+      const toolCalls: Array<{
+        index: number;
+        id: string;
+        name: string;
+        argumentsRaw: string;
+      }> = [];
 
-    for await (const chunk of stream as AsyncIterable<ChatCompletionChunk>) {
-      const delta = chunk.choices[0]?.delta?.content;
-      if (delta) {
-        fullResponse += delta;
-        yield delta;
+      for await (const chunk of stream as AsyncIterable<ChatCompletionChunk>) {
+        const delta = chunk.choices[0]?.delta;
+        if (!delta) continue;
+
+        if (delta.content) {
+          fullResponse += delta.content;
+          yield delta.content;
+        }
+
+        // Accumulate streamed tool call deltas
+        if (delta.tool_calls) {
+          for (const tcDelta of delta.tool_calls) {
+            const idx = tcDelta.index;
+            if (!toolCalls[idx]) {
+              toolCalls[idx] = {
+                index: idx,
+                id: tcDelta.id ?? "",
+                name: tcDelta.function?.name ?? "",
+                argumentsRaw: "",
+              };
+            }
+            if (tcDelta.id) toolCalls[idx].id = tcDelta.id;
+            if (tcDelta.function?.name)
+              toolCalls[idx].name = tcDelta.function.name;
+            if (tcDelta.function?.arguments)
+              toolCalls[idx].argumentsRaw += tcDelta.function.arguments;
+          }
+        }
       }
-    }
 
-    this.messages.push({ role: "assistant", content: fullResponse });
+      if (toolCalls.length > 0 && this.toolExecutor) {
+        // Push the assistant message with tool_calls
+        this.messages.push({
+          role: "assistant",
+          content: fullResponse || null,
+          tool_calls: toolCalls.map((tc) => ({
+            id: tc.id,
+            type: "function" as const,
+            function: { name: tc.name, arguments: tc.argumentsRaw },
+          })),
+        });
+
+        // Execute each tool call and push results
+        for (const tc of toolCalls) {
+          let args: Record<string, unknown> = {};
+          try {
+            args = JSON.parse(tc.argumentsRaw) as Record<string, unknown>;
+          } catch {
+            // leave args as empty object if JSON is malformed
+          }
+          let toolResult: string;
+          try {
+            toolResult = await this.toolExecutor(tc.name, args);
+          } catch (err) {
+            toolResult = `Error: ${String(err)}`;
+          }
+          this.messages.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            content: toolResult,
+          });
+        }
+        // Continue the loop to let the model produce its next response
+        continue;
+      }
+
+      // No tool calls – this is the final assistant response
+      this.messages.push({ role: "assistant", content: fullResponse });
+      break;
+    }
   }
 
   /**
    * Send a user message and return the full response at once (non-streaming).
+   * Handles tool calls transparently (same as `chat`).
    *
    * @param userMessage - The text content of the user message.
    * @param name - Optional speaker name to distinguish between participants.
@@ -90,15 +177,56 @@ export class Agent {
   async run(userMessage: string, name?: string): Promise<string> {
     this.messages.push(this.buildUserMessage(userMessage, name));
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages: this.messages,
-      stream: false,
-    });
+    while (true) {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: this.messages,
+        stream: false,
+        ...(this.tools ? { tools: this.tools } : {}),
+      });
 
-    const content = response.choices[0]?.message?.content ?? "";
-    this.messages.push({ role: "assistant", content });
-    return content;
+      const choice = response.choices[0];
+      const message = choice?.message;
+
+      if (
+        message?.tool_calls?.length &&
+        this.toolExecutor
+      ) {
+        this.messages.push({
+          role: "assistant",
+          content: message.content ?? null,
+          tool_calls: message.tool_calls,
+        });
+
+        for (const tc of message.tool_calls) {
+          // Only handle standard function tool calls
+          if (tc.type !== "function") continue;
+          const fnTc = tc as ChatCompletionMessageFunctionToolCall;
+          let args: Record<string, unknown> = {};
+          try {
+            args = JSON.parse(fnTc.function.arguments) as Record<string, unknown>;
+          } catch {
+            // leave args as empty object
+          }
+          let toolResult: string;
+          try {
+            toolResult = await this.toolExecutor(fnTc.function.name, args);
+          } catch (err) {
+            toolResult = `Error: ${String(err)}`;
+          }
+          this.messages.push({
+            role: "tool",
+            tool_call_id: fnTc.id,
+            content: toolResult,
+          });
+        }
+        continue;
+      }
+
+      const content = message?.content ?? "";
+      this.messages.push({ role: "assistant", content });
+      return content;
+    }
   }
 
   /**

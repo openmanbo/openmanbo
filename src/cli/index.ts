@@ -4,7 +4,8 @@ import { Command } from "commander";
 import { loadConfig } from "../config/env.js";
 import { createLLMClient, Agent } from "../kernel/index.js";
 import { DiscordChannel } from "../channel/index.js";
-import { resolveDataDir, readIdentity } from "../storage/index.js";
+import { resolveDataDir, readIdentity, readMcpConfig } from "../storage/index.js";
+import { McpManager } from "../mcp/index.js";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
@@ -33,7 +34,15 @@ program
     });
 
     const dataDir = resolveDataDir(config.dataDir);
-    const identity = await readIdentity(dataDir);
+    const [identity, mcpConfig] = await Promise.all([
+      readIdentity(dataDir),
+      readMcpConfig(dataDir),
+    ]);
+
+    const mcp = new McpManager();
+    if (mcpConfig) {
+      await mcp.connect(mcpConfig);
+    }
 
     const client = createLLMClient(config);
     const agent = new Agent({
@@ -41,12 +50,20 @@ program
       model: config.model,
       systemPrompt:
         identity ?? "You are Manbo, a helpful and concise AI assistant.",
+      ...(mcp.isActive
+        ? {
+            tools: mcp.tools,
+            toolExecutor: mcp.call.bind(mcp),
+          }
+        : {}),
     });
 
     for await (const chunk of agent.chat(prompt)) {
       process.stdout.write(chunk);
     }
     process.stdout.write("\n");
+
+    await mcp.disconnect();
   });
 
 // ── interactive command: REPL session ──────────────────────────────
@@ -67,7 +84,15 @@ program
     });
 
     const dataDir = resolveDataDir(config.dataDir);
-    const identity = await readIdentity(dataDir);
+    const [identity, mcpConfig] = await Promise.all([
+      readIdentity(dataDir),
+      readMcpConfig(dataDir),
+    ]);
+
+    const mcp = new McpManager();
+    if (mcpConfig) {
+      await mcp.connect(mcpConfig);
+    }
 
     const client = createLLMClient(config);
     const agent = new Agent({
@@ -75,6 +100,12 @@ program
       model: config.model,
       systemPrompt:
         identity ?? "You are Manbo, a helpful and concise AI assistant.",
+      ...(mcp.isActive
+        ? {
+            tools: mcp.tools,
+            toolExecutor: mcp.call.bind(mcp),
+          }
+        : {}),
     });
 
     const rl = readline.createInterface({ input, output });
@@ -102,6 +133,8 @@ program
       }
       process.stdout.write("\n\n");
     }
+
+    await mcp.disconnect();
   });
 
 // ── discord command: run as a Discord bot ─────────────────────────
@@ -130,17 +163,31 @@ program
     }
 
     const dataDir = resolveDataDir(config.dataDir);
-    const identity = await readIdentity(dataDir);
+    const [identity, mcpConfig] = await Promise.all([
+      readIdentity(dataDir),
+      readMcpConfig(dataDir),
+    ]);
+
+    const mcp = new McpManager();
+    if (mcpConfig) {
+      await mcp.connect(mcpConfig);
+    }
 
     const channel = new DiscordChannel({
       botToken: config.discordBotToken,
       appConfig: config,
       systemPrompt: identity,
+      ...(mcp.isActive
+        ? {
+            mcpTools: mcp.tools,
+            mcpToolExecutor: mcp.call.bind(mcp),
+          }
+        : {}),
     });
 
     // Graceful shutdown
     const shutdown = async () => {
-      await channel.stop();
+      await Promise.all([channel.stop(), mcp.disconnect()]);
       process.exit(0);
     };
     process.on("SIGINT", () => void shutdown());

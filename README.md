@@ -56,6 +56,64 @@ manbo chat "How do I structure a Node.js monorepo?"
 
 If `IDENTITY.md` is absent or empty, the default system prompt is used (`You are Manbo, a helpful and concise AI assistant.`).
 
+### MCP Tools (`mcp.json`)
+
+OpenManbo supports [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers, allowing the agent to call external tools (e.g. web search via [Tavily](https://tavily.com/)).
+
+Create an `mcp.json` file in your `.openmanbo` storage directory to configure MCP servers:
+
+```bash
+cp .openmanbo/mcp.json.example .openmanbo/mcp.json
+# Edit .openmanbo/mcp.json and fill in your API keys
+```
+
+The file follows the [Claude Desktop MCP convention](https://modelcontextprotocol.io/quickstart/user):
+
+```json
+{
+  "mcpServers": {
+    "tavily": {
+      "command": "npx",
+      "args": ["-y", "tavily-mcp"],
+      "env": {
+        "TAVILY_API_KEY": "tvly-your-tavily-api-key-here"
+      }
+    }
+  }
+}
+```
+
+Each entry under `mcpServers` defines one MCP server:
+
+| Field | Description |
+|---|---|
+| `command` | Executable to spawn (e.g. `npx`, `python`, `node`) |
+| `args` | Arguments passed to the command |
+| `env` | Extra environment variables injected into the server process — **this is where API tokens/keys go** |
+
+OpenManbo will automatically connect to all configured servers at startup, discover their tools, and make them available to the model. Tool calls are executed transparently during the reasoning loop.
+
+#### Adding multiple MCP servers
+
+```json
+{
+  "mcpServers": {
+    "tavily": {
+      "command": "npx",
+      "args": ["-y", "tavily-mcp"],
+      "env": { "TAVILY_API_KEY": "tvly-your-key" }
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp-your-token" }
+    }
+  }
+}
+```
+
+If `mcp.json` is absent or contains no servers, the agent runs without tools (same as before).
+
 ### Discord Channel
 
 Run the agent as a Discord bot. The bot responds to direct messages and @mentions in server channels.
@@ -107,12 +165,16 @@ src/
 │   └── index.ts
 ├── config/        # Environment & configuration loading
 │   └── env.ts
+├── mcp/           # MCP (Model Context Protocol) client integration
+│   ├── types.ts   # McpConfig / McpServerConfig interfaces
+│   ├── client.ts  # McpManager – connects to servers, lists/calls tools
+│   └── index.ts
 ├── storage/       # .openmanbo storage directory helpers
-│   └── index.ts   # resolveDataDir, readIdentity
+│   └── index.ts   # resolveDataDir, readIdentity, readMcpConfig
 └── kernel/        # Agent Kernel (LLM client + Agent loop)
     ├── index.ts
     ├── llm.ts     # OpenAI SDK client factory
-    └── agent.ts   # Agent class with streaming chat
+    └── agent.ts   # Agent class with streaming chat + tool-calling loop
 ```
 
 ## Development

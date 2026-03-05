@@ -1,0 +1,124 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type OpenAI from "openai";
+import type { McpConfig, McpServerConfig } from "./types.js";
+/**
+ * Wraps a single connected MCP server client.
+ */
+interface McpServerEntry {
+  name: string;
+  client: Client;
+  tools: Tool[];
+}
+
+/**
+ * Manages connections to one or more MCP servers defined in `mcp.json`.
+ * Exposes a flat list of OpenAI-compatible tool definitions and a method
+ * to dispatch tool calls to the appropriate server.
+ */
+export class McpManager {
+  private servers: McpServerEntry[] = [];
+
+  /**
+   * Connect to all servers defined in the config.
+   * Call this once before using `tools` or `call`.
+   */
+  async connect(config: McpConfig): Promise<void> {
+    for (const [name, serverCfg] of Object.entries(config.mcpServers)) {
+      try {
+        const entry = await this.connectServer(name, serverCfg);
+        this.servers.push(entry);
+      } catch (err) {
+        console.warn(
+          `[MCP] Failed to connect to server "${name}": ${String(err)}`,
+        );
+      }
+    }
+  }
+
+  private async connectServer(
+    name: string,
+    cfg: McpServerConfig,
+  ): Promise<McpServerEntry> {
+    const transport = new StdioClientTransport({
+      command: cfg.command,
+      args: cfg.args ?? [],
+      env: cfg.env
+        ? { ...process.env, ...cfg.env } as Record<string, string>
+        : undefined,
+    });
+
+    const client = new Client({ name: "openmanbo", version: "0.1.0" });
+    await client.connect(transport);
+
+    const { tools } = await client.listTools();
+    return { name, client, tools };
+  }
+
+  /**
+   * Returns all tools from all connected MCP servers as OpenAI tool definitions.
+   */
+  get tools(): OpenAI.ChatCompletionTool[] {
+    return this.servers.flatMap((server) =>
+      server.tools.map((tool) => ({
+        type: "function" as const,
+        function: {
+          name: tool.name,
+          description: tool.description ?? "",
+          parameters: (tool.inputSchema ?? { type: "object", properties: {} }) as OpenAI.FunctionParameters,
+        },
+      })),
+    );
+  }
+
+  /**
+   * Call a tool by name, dispatching to the correct MCP server.
+   * Returns the tool result as a string.
+   */
+  async call(toolName: string, args: Record<string, unknown>): Promise<string> {
+    for (const server of this.servers) {
+      const hasTool = server.tools.some((t) => t.name === toolName);
+      if (hasTool) {
+        const result = await server.client.callTool({
+          name: toolName,
+          arguments: args,
+        });
+        // Flatten content blocks into a single string
+        if (Array.isArray(result.content)) {
+          return result.content
+            .map((block) => {
+              if (typeof block === "object" && block !== null && "text" in block) {
+                return String((block as { text: unknown }).text);
+              }
+              return JSON.stringify(block);
+            })
+            .join("\n");
+        }
+        return JSON.stringify(result.content);
+      }
+    }
+    throw new Error(`Unknown MCP tool: ${toolName}`);
+  }
+
+  /**
+   * Disconnect all MCP server clients.
+   */
+  async disconnect(): Promise<void> {
+    for (const server of this.servers) {
+      try {
+        await server.client.close();
+      } catch {
+        // ignore errors during cleanup
+      }
+    }
+    this.servers = [];
+  }
+
+  /**
+   * Whether any MCP servers with tools are connected.
+   */
+  get isActive(): boolean {
+    return this.servers.length > 0 && this.tools.length > 0;
+  }
+}

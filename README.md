@@ -34,6 +34,27 @@ pnpm dev interactive
 | `--api-key <key>` | `OPENAI_API_KEY` | API key for the OpenAI-compatible service |
 | `--api-base-url <url>` | `OPENAI_API_BASE_URL` | Base URL (default: `https://api.openai.com/v1`) |
 | `--model <model>` | `OPENAI_MODEL` | Model name (default: `gpt-4o`) |
+| `--data-dir <path>` | `OPENMANBO_DATA_DIR` | Path to the `.openmanbo` storage directory (default: `.openmanbo` in cwd) |
+
+### Storage Directory (`.openmanbo`)
+
+OpenManbo reads configuration files from a storage directory (`.openmanbo` in the current working directory by default). You can override this path with `--data-dir` or the `OPENMANBO_DATA_DIR` environment variable.
+
+#### `IDENTITY.md`
+
+Place an `IDENTITY.md` file in the storage directory to set the agent's system prompt:
+
+```bash
+mkdir .openmanbo
+cat > .openmanbo/IDENTITY.md << 'EOF'
+You are Aria, a specialist in software architecture and TypeScript.
+Answer concisely and with code examples when relevant.
+EOF
+
+manbo chat "How do I structure a Node.js monorepo?"
+```
+
+If `IDENTITY.md` is absent or empty, the default system prompt is used (`You are Manbo, a helpful and concise AI assistant.`).
 
 ### Discord Channel
 
@@ -86,6 +107,8 @@ src/
 │   └── index.ts
 ├── config/        # Environment & configuration loading
 │   └── env.ts
+├── storage/       # .openmanbo storage directory helpers
+│   └── index.ts   # resolveDataDir, readIdentity
 └── kernel/        # Agent Kernel (LLM client + Agent loop)
     ├── index.ts
     ├── llm.ts     # OpenAI SDK client factory

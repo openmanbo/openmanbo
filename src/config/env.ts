@@ -9,6 +9,8 @@ export interface AppConfig {
   apiBaseUrl: string;
   /** Model name to use (e.g. gpt-4o, deepseek-chat) */
   model: string;
+  /** Discord bot token (required for the Discord channel) */
+  discordBotToken?: string;
 }
 
 /**
@@ -22,6 +24,8 @@ export function loadConfig(overrides?: Partial<AppConfig>): AppConfig {
     process.env.OPENAI_API_BASE_URL ??
     "https://api.openai.com/v1";
   const model = overrides?.model ?? process.env.OPENAI_MODEL ?? "gpt-4o";
+  const discordBotToken =
+    overrides?.discordBotToken ?? process.env.DISCORD_BOT_TOKEN;
 
   if (!apiKey) {
     throw new Error(
@@ -29,5 +33,5 @@ export function loadConfig(overrides?: Partial<AppConfig>): AppConfig {
     );
   }
 
-  return { apiKey, apiBaseUrl, model };
+  return { apiKey, apiBaseUrl, model, discordBotToken };
 }

@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { loadConfig } from "../config/env.js";
 import { createLLMClient, Agent } from "../kernel/index.js";
 import { DiscordChannel } from "../channel/index.js";
+import { resolveDataDir, readIdentity } from "../storage/index.js";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
@@ -22,18 +23,24 @@ program
   .option("--api-key <key>", "OpenAI-compatible API key")
   .option("--api-base-url <url>", "OpenAI-compatible API base URL")
   .option("--model <model>", "Model name to use")
+  .option("--data-dir <path>", "Path to the .openmanbo storage directory")
   .action(async (prompt: string, opts) => {
     const config = loadConfig({
       apiKey: opts.apiKey,
       apiBaseUrl: opts.apiBaseUrl,
       model: opts.model,
+      dataDir: opts.dataDir,
     });
+
+    const dataDir = resolveDataDir(config.dataDir);
+    const identity = await readIdentity(dataDir);
 
     const client = createLLMClient(config);
     const agent = new Agent({
       client,
       model: config.model,
-      systemPrompt: "You are Manbo, a helpful and concise AI assistant.",
+      systemPrompt:
+        identity ?? "You are Manbo, a helpful and concise AI assistant.",
     });
 
     for await (const chunk of agent.chat(prompt)) {
@@ -50,18 +57,24 @@ program
   .option("--api-key <key>", "OpenAI-compatible API key")
   .option("--api-base-url <url>", "OpenAI-compatible API base URL")
   .option("--model <model>", "Model name to use")
+  .option("--data-dir <path>", "Path to the .openmanbo storage directory")
   .action(async (opts) => {
     const config = loadConfig({
       apiKey: opts.apiKey,
       apiBaseUrl: opts.apiBaseUrl,
       model: opts.model,
+      dataDir: opts.dataDir,
     });
+
+    const dataDir = resolveDataDir(config.dataDir);
+    const identity = await readIdentity(dataDir);
 
     const client = createLLMClient(config);
     const agent = new Agent({
       client,
       model: config.model,
-      systemPrompt: "You are Manbo, a helpful and concise AI assistant.",
+      systemPrompt:
+        identity ?? "You are Manbo, a helpful and concise AI assistant.",
     });
 
     const rl = readline.createInterface({ input, output });
@@ -99,12 +112,14 @@ program
   .option("--api-base-url <url>", "OpenAI-compatible API base URL")
   .option("--model <model>", "Model name to use")
   .option("--bot-token <token>", "Discord bot token")
+  .option("--data-dir <path>", "Path to the .openmanbo storage directory")
   .action(async (opts) => {
     const config = loadConfig({
       apiKey: opts.apiKey,
       apiBaseUrl: opts.apiBaseUrl,
       model: opts.model,
       discordBotToken: opts.botToken,
+      dataDir: opts.dataDir,
     });
 
     if (!config.discordBotToken) {
@@ -114,9 +129,13 @@ program
       process.exit(1);
     }
 
+    const dataDir = resolveDataDir(config.dataDir);
+    const identity = await readIdentity(dataDir);
+
     const channel = new DiscordChannel({
       botToken: config.discordBotToken,
       appConfig: config,
+      systemPrompt: identity,
     });
 
     // Graceful shutdown

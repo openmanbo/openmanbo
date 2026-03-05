@@ -11,6 +11,8 @@ export interface AppConfig {
   model: string;
   /** Discord bot token (required for the Discord channel) */
   discordBotToken?: string;
+  /** Path to the .openmanbo storage directory */
+  dataDir?: string;
 }
 
 /**
@@ -26,6 +28,7 @@ export function loadConfig(overrides?: Partial<AppConfig>): AppConfig {
   const model = overrides?.model ?? process.env.OPENAI_MODEL ?? "gpt-4o";
   const discordBotToken =
     overrides?.discordBotToken ?? process.env.DISCORD_BOT_TOKEN;
+  const dataDir = overrides?.dataDir ?? process.env.OPENMANBO_DATA_DIR;
 
   if (!apiKey) {
     throw new Error(
@@ -33,5 +36,5 @@ export function loadConfig(overrides?: Partial<AppConfig>): AppConfig {
     );
   }
 
-  return { apiKey, apiBaseUrl, model, discordBotToken };
+  return { apiKey, apiBaseUrl, model, discordBotToken, dataDir };
 }

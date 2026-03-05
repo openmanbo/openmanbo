@@ -34,6 +34,22 @@ export class Agent {
   }
 
   /**
+   * Build a user message param, optionally prefixing the content with the
+   * speaker's name so the LLM can distinguish participants.
+   */
+  private buildUserMessage(
+    text: string,
+    name?: string,
+  ): ChatCompletionUserMessageParam {
+    const content = name ? `[${name}]: ${text}` : text;
+    return {
+      role: "user",
+      content,
+      ...(name ? { name } : {}),
+    };
+  }
+
+  /**
    * Send a user message and stream the assistant's response.
    * Yields string chunks as they arrive.
    *
@@ -44,12 +60,7 @@ export class Agent {
     userMessage: string,
     name?: string,
   ): AsyncGenerator<string, void, undefined> {
-    const userMsg: ChatCompletionUserMessageParam = {
-      role: "user",
-      content: userMessage,
-      ...(name ? { name } : {}),
-    };
-    this.messages.push(userMsg);
+    this.messages.push(this.buildUserMessage(userMessage, name));
 
     const stream = await this.client.chat.completions.create({
       model: this.model,
@@ -77,12 +88,7 @@ export class Agent {
    * @param name - Optional speaker name to distinguish between participants.
    */
   async run(userMessage: string, name?: string): Promise<string> {
-    const userMsg: ChatCompletionUserMessageParam = {
-      role: "user",
-      content: userMessage,
-      ...(name ? { name } : {}),
-    };
-    this.messages.push(userMsg);
+    this.messages.push(this.buildUserMessage(userMessage, name));
 
     const response = await this.client.chat.completions.create({
       model: this.model,

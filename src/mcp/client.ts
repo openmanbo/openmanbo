@@ -1,8 +1,16 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type OpenAI from "openai";
-import type { McpConfig, McpServerConfig } from "./types.js";
+import {
+  isStdioConfig,
+  isHttpConfig,
+  type McpConfig,
+  type McpServerConfig,
+  type McpStdioServerConfig,
+  type McpHttpServerConfig,
+} from "./types.js";
 /**
  * Wraps a single connected MCP server client.
  */
@@ -16,6 +24,10 @@ interface McpServerEntry {
  * Manages connections to one or more MCP servers defined in `mcp.json`.
  * Exposes a flat list of OpenAI-compatible tool definitions and a method
  * to dispatch tool calls to the appropriate server.
+ *
+ * Supports two transport types:
+ * - **stdio** – spawns a local process (requires `command` in config)
+ * - **Streamable HTTP** – connects to a remote URL (requires `url` in config)
  */
 export class McpManager {
   private servers: McpServerEntry[] = [];
@@ -28,7 +40,7 @@ export class McpManager {
     for (const [name, serverCfg] of Object.entries(config.mcpServers)) {
       if (!this.isValidServerConfig(serverCfg)) {
         console.warn(
-          `[MCP] Invalid config for server "${name}". Expected an object with a string "command". If this is env vars, nest them under a server's "env" field.`,
+          `[MCP] Invalid config for server "${name}". Expected an object with a string "command" (stdio) or "url" (HTTP).`,
         );
         continue;
       }
@@ -47,6 +59,26 @@ export class McpManager {
     name: string,
     cfg: McpServerConfig,
   ): Promise<McpServerEntry> {
+    const client = new Client({ name: "openmanbo", version: "0.1.0" });
+
+    if (isHttpConfig(cfg)) {
+      await this.connectHttpServer(client, cfg);
+    } else if (isStdioConfig(cfg)) {
+      await this.connectStdioServer(client, cfg);
+    } else {
+      throw new Error(
+        `Ambiguous config: provide either "command" (stdio) or "url" (HTTP), not both.`,
+      );
+    }
+
+    const { tools } = await client.listTools();
+    return { name, client, tools };
+  }
+
+  private async connectStdioServer(
+    client: Client,
+    cfg: McpStdioServerConfig,
+  ): Promise<void> {
     const transport = new StdioClientTransport({
       command: cfg.command,
       args: cfg.args ?? [],
@@ -54,12 +86,20 @@ export class McpManager {
         ? { ...cfg.env, ...process.env } as Record<string, string>
         : undefined,
     });
-
-    const client = new Client({ name: "openmanbo", version: "0.1.0" });
     await client.connect(transport);
+  }
 
-    const { tools } = await client.listTools();
-    return { name, client, tools };
+  private async connectHttpServer(
+    client: Client,
+    cfg: McpHttpServerConfig,
+  ): Promise<void> {
+    const transport = new StreamableHTTPClientTransport(
+      new URL(cfg.url),
+      cfg.headers
+        ? { requestInit: { headers: cfg.headers } }
+        : undefined,
+    );
+    await client.connect(transport);
   }
 
   private isValidServerConfig(cfg: unknown): cfg is McpServerConfig {
@@ -67,8 +107,12 @@ export class McpManager {
       return false;
     }
 
-    const maybeCfg = cfg as { command?: unknown };
-    return typeof maybeCfg.command === "string" && maybeCfg.command.length > 0;
+    const obj = cfg as Record<string, unknown>;
+    const hasCommand = typeof obj.command === "string" && obj.command.length > 0;
+    const hasUrl = typeof obj.url === "string" && obj.url.length > 0;
+
+    // Must have exactly one of command or url, not both
+    return (hasCommand || hasUrl) && !(hasCommand && hasUrl);
   }
 
   /**

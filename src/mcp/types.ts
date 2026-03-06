@@ -29,14 +29,14 @@ export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig;
  * Type guard: returns true when the config describes a stdio-based server.
  */
 export function isStdioConfig(cfg: McpServerConfig): cfg is McpStdioServerConfig {
-  return "command" in cfg;
+  return "command" in cfg && !("url" in cfg);
 }
 
 /**
  * Type guard: returns true when the config describes an HTTP-based server.
  */
 export function isHttpConfig(cfg: McpServerConfig): cfg is McpHttpServerConfig {
-  return "url" in cfg;
+  return "url" in cfg && !("command" in cfg);
 }
 
 /**

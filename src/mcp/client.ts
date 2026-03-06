@@ -63,8 +63,12 @@ export class McpManager {
 
     if (isHttpConfig(cfg)) {
       await this.connectHttpServer(client, cfg);
-    } else {
+    } else if (isStdioConfig(cfg)) {
       await this.connectStdioServer(client, cfg);
+    } else {
+      throw new Error(
+        `Ambiguous config: provide either "command" (stdio) or "url" (HTTP), not both.`,
+      );
     }
 
     const { tools } = await client.listTools();
@@ -107,7 +111,8 @@ export class McpManager {
     const hasCommand = typeof obj.command === "string" && obj.command.length > 0;
     const hasUrl = typeof obj.url === "string" && obj.url.length > 0;
 
-    return hasCommand || hasUrl;
+    // Must have exactly one of command or url, not both
+    return (hasCommand || hasUrl) && !(hasCommand && hasUrl);
   }
 
   /**

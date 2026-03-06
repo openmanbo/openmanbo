@@ -16,7 +16,7 @@
     },
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "workspace"]
     },
     "memory": {
       "command": "npx",

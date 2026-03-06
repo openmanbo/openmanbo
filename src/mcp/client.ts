@@ -45,7 +45,7 @@ export class McpManager {
       command: cfg.command,
       args: cfg.args ?? [],
       env: cfg.env
-        ? { ...process.env, ...cfg.env } as Record<string, string>
+        ? { ...cfg.env, ...process.env } as Record<string, string>
         : undefined,
     });
 

@@ -16,7 +16,7 @@
     },
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "workspace"]
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", ".openmanbo/workspace"]
     },
     "memory": {
       "command": "npx",

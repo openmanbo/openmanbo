@@ -26,6 +26,12 @@ export class McpManager {
    */
   async connect(config: McpConfig): Promise<void> {
     for (const [name, serverCfg] of Object.entries(config.mcpServers)) {
+      if (!this.isValidServerConfig(serverCfg)) {
+        console.warn(
+          `[MCP] Invalid config for server "${name}". Expected an object with a string "command". If this is env vars, nest them under a server's "env" field.`,
+        );
+        continue;
+      }
       try {
         const entry = await this.connectServer(name, serverCfg);
         this.servers.push(entry);
@@ -54,6 +60,15 @@ export class McpManager {
 
     const { tools } = await client.listTools();
     return { name, client, tools };
+  }
+
+  private isValidServerConfig(cfg: unknown): cfg is McpServerConfig {
+    if (typeof cfg !== "object" || cfg === null) {
+      return false;
+    }
+
+    const maybeCfg = cfg as { command?: unknown };
+    return typeof maybeCfg.command === "string" && maybeCfg.command.length > 0;
   }
 
   /**

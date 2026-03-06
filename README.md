@@ -91,6 +91,8 @@ Each entry under `mcpServers` defines one MCP server:
 | `args` | Arguments passed to the command |
 | `env` | Extra environment variables injected into the server process — **this is where API tokens/keys go** |
 
+When the same key exists in both `mcp.json` `env` and your process environment (including values loaded from `.env`), the process environment value takes precedence.
+
 OpenManbo will automatically connect to all configured servers at startup, discover their tools, and make them available to the model. Tool calls are executed transparently during the reasoning loop.
 
 #### Adding multiple MCP servers

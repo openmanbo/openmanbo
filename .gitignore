@@ -3,3 +3,4 @@ dist/
 .env
 *.tsbuildinfo
 package-lock.json
+.openmanbo/mcp.json

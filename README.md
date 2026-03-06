@@ -58,7 +58,7 @@ If `IDENTITY.md` is absent or empty, the default system prompt is used (`You are
 
 ### MCP Tools (`mcp.json`)
 
-OpenManbo supports [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers, allowing the agent to call external tools (e.g. web search via [Tavily](https://tavily.com/)).
+OpenManbo supports [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers, allowing the agent to call external tools (e.g. web search, file access, GitHub operations).
 
 Create an `mcp.json` file in your `.openmanbo` storage directory to configure MCP servers:
 
@@ -83,7 +83,11 @@ The file follows the [Claude Desktop MCP convention](https://modelcontextprotoco
 }
 ```
 
-Each entry under `mcpServers` defines one MCP server:
+OpenManbo supports two transport types:
+
+#### Stdio servers (local)
+
+Spawn a local process that communicates over stdin/stdout.
 
 | Field | Description |
 |---|---|
@@ -93,9 +97,31 @@ Each entry under `mcpServers` defines one MCP server:
 
 When the same key exists in both `mcp.json` `env` and your process environment (including values loaded from `.env`), the process environment value takes precedence.
 
+#### Streamable HTTP servers (remote)
+
+Connect to a remote MCP server over HTTP using the [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http).
+
+| Field | Description |
+|---|---|
+| `url` | URL of the remote MCP server endpoint |
+| `headers` | Optional HTTP headers (e.g. `Authorization`) |
+
+```json
+{
+  "mcpServers": {
+    "remote": {
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer your-token"
+      }
+    }
+  }
+}
+```
+
 OpenManbo will automatically connect to all configured servers at startup, discover their tools, and make them available to the model. Tool calls are executed transparently during the reasoning loop.
 
-#### Adding multiple MCP servers
+#### Popular MCP servers from [`modelcontextprotocol/servers`](https://github.com/modelcontextprotocol/servers)
 
 ```json
 {
@@ -109,6 +135,18 @@ OpenManbo will automatically connect to all configured servers at startup, disco
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-github"],
       "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp-your-token" }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    },
+    "fetch": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"]
     }
   }
 }
@@ -168,7 +206,7 @@ src/
 ├── config/        # Environment & configuration loading
 │   └── env.ts
 ├── mcp/           # MCP (Model Context Protocol) client integration
-│   ├── types.ts   # McpConfig / McpServerConfig interfaces
+│   ├── types.ts   # McpConfig / McpServerConfig interfaces (stdio & HTTP)
 │   ├── client.ts  # McpManager – connects to servers, lists/calls tools
 │   └── index.ts
 ├── storage/       # .openmanbo storage directory helpers

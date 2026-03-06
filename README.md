@@ -185,6 +185,34 @@ pnpm build          # Compile TypeScript to dist/
 pnpm start          # Run compiled output
 ```
 
+## Docker
+
+Build the image:
+
+```bash
+docker build -t openmanbo .
+```
+
+The container defaults to the `discord` command. It reads normal environment variables (`OPENAI_API_KEY`, `OPENAI_API_BASE_URL`, `OPENAI_MODEL`, `DISCORD_BOT_TOKEN`) and uses `/data` as the `.openmanbo` directory inside the container.
+
+Run the Discord bot with your local config mounted into `/data`:
+
+```bash
+docker run --rm \
+  --env-file .env \
+  -v "$(pwd)/.openmanbo:/data" \
+  openmanbo
+```
+
+Override the default command when you want one-shot chat instead:
+
+```bash
+docker run --rm \
+  --env-file .env \
+  -v "$(pwd)/.openmanbo:/data" \
+  openmanbo chat "Hello, who are you?"
+```
+
 ## License
 
 MIT

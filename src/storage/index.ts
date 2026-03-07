@@ -4,6 +4,7 @@ import * as path from "node:path";
 import {
   isHttpConfig,
   isStdioConfig,
+  type BuiltinExecToolConfig,
   type McpConfig,
   type McpServerConfig,
 } from "../mcp/types.js";
@@ -38,13 +39,17 @@ function normalizeMcpConfig(
   const expandedConfig = expandTemplateValue(config, templateContext);
   const cwd = templateContext.workspaceDir;
   const mcpServers = Object.fromEntries(
-    Object.entries(expandedConfig.mcpServers).map(([name, serverCfg]) => [
+    Object.entries(expandedConfig.mcpServers ?? {}).map(([name, serverCfg]) => [
       name,
       normalizeMcpServerConfig(serverCfg, cwd),
     ]),
   );
+  const builtinTools = normalizeBuiltinToolsConfig(
+    expandedConfig.builtinTools,
+    cwd,
+  );
 
-  return { ...expandedConfig, mcpServers };
+  return { ...expandedConfig, mcpServers, builtinTools };
 }
 
 function createMcpTemplateContext(dataDir: string): McpTemplateContext {
@@ -130,6 +135,36 @@ function normalizeMcpServerConfig(
   }
 
   return serverCfg;
+}
+
+function normalizeBuiltinToolsConfig(
+  builtinTools: McpConfig["builtinTools"],
+  cwd: string,
+): McpConfig["builtinTools"] {
+  if (!builtinTools) {
+    return undefined;
+  }
+
+  return {
+    ...builtinTools,
+    exec: builtinTools.exec
+      ? normalizeBuiltinExecToolConfig(builtinTools.exec, cwd)
+      : undefined,
+  };
+}
+
+function normalizeBuiltinExecToolConfig(
+  config: BuiltinExecToolConfig,
+  cwd: string,
+): BuiltinExecToolConfig {
+  return {
+    ...config,
+    cwd: resolveMcpCwd(config.cwd, cwd),
+    shell:
+      typeof config.shell === "string"
+        ? resolveMcpCwd(config.shell, cwd)
+        : config.shell,
+  };
 }
 
 function resolveMcpCwd(configuredCwd: string | undefined, fallbackCwd: string): string {

@@ -26,5 +26,33 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
     }
+  },
+  "builtinTools": {
+    "exec": {
+      "enabled": true,
+      "name": "builtin_exec",
+      "description": "Run allowlisted workspace commands only.",
+      "cwd": "${workspaceDir}",
+      "timeoutMs": 15000,
+      "maxOutputChars": 8000,
+      "allowlist": [
+        {
+          "pattern": "date",
+          "description": "Get the current date and time."
+        },
+        {
+          "pattern": "which(?:\\s+[A-Za-z0-9._-]+)+",
+          "description": "Locate an executable in PATH."
+        },
+        {
+          "pattern": "claude(?:\\s+[A-Za-z0-9._:/=,@+-]+)*",
+          "description": "Run the Claude CLI with simple arguments."
+        },
+        {
+          "pattern": "gemini(?:\\s+[A-Za-z0-9._:/=,@+-]+)*",
+          "description": "Run the Gemini CLI with simple arguments."
+        }
+      ]
+    }
   }
 }

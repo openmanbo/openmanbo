@@ -165,6 +165,64 @@ Connect to a remote MCP server over HTTP using the [Streamable HTTP transport](h
 
 OpenManbo will automatically connect to all configured servers at startup, discover their tools, and make them available to the model. Tool calls are executed transparently during the reasoning loop.
 
+### Built-in Exec Tool
+
+OpenManbo can also expose a built-in shell execution tool directly from `mcp.json`. Unlike external MCP servers, this tool runs inside the OpenManbo process and only accepts commands that match an explicit allowlist.
+
+```json
+{
+  "builtinTools": {
+    "exec": {
+      "enabled": true,
+      "name": "builtin_exec",
+      "description": "Run allowlisted workspace commands only.",
+      "cwd": "${workspaceDir}",
+      "timeoutMs": 15000,
+      "maxOutputChars": 8000,
+      "allowlist": [
+        {
+          "pattern": "pwd",
+          "description": "Print the current working directory"
+        },
+        {
+          "pattern": "ls(?:\\s+-[A-Za-z]+)*(?:\\s+[./A-Za-z0-9_-]+)?",
+          "description": "List files in the workspace"
+        },
+        {
+          "pattern": "pnpm\\s+(?:build|test)",
+          "description": "Run the project build or test command"
+        }
+      ]
+    }
+  }
+}
+```
+
+The exec tool accepts a single argument:
+
+| Field | Description |
+|---|---|
+| `command` | A single-line shell command string that must match one of the configured allowlist regex rules |
+
+Built-in exec fields:
+
+| Field | Description |
+|---|---|
+| `enabled` | Enable or disable the built-in exec tool |
+| `name` | Tool name exposed to the model (default: `builtin_exec`) |
+| `description` | Tool description shown to the model |
+| `cwd` | Working directory for command execution |
+| `shell` | Optional shell executable path override |
+| `env` | Extra environment variables passed to the spawned process |
+| `timeoutMs` | Command timeout in milliseconds |
+| `maxOutputChars` | Max combined stdout/stderr characters returned to the model |
+| `maxCommandLength` | Max accepted command length before validation fails |
+| `allowlist` | Array of full-string regex rules used to approve commands |
+
+Rules are matched against the entire command string. A rule such as `pnpm\\s+(?:build|test)` allows `pnpm build` and `pnpm test`, but rejects `pnpm install`.
+
+Security note: this tool validates commands before launching a shell, but it is not a sandbox. Freeform shell execution with pipes, redirects, and substitutions is inherently riskier than predefined command templates. Keep the allowlist narrow and prefer anchored, specific patterns.
+
 #### Popular MCP servers from [`modelcontextprotocol/servers`](https://github.com/modelcontextprotocol/servers)
 
 ```json

@@ -23,6 +23,47 @@ export interface McpHttpServerConfig {
 }
 
 /**
+ * A single allowlist rule for the built-in exec tool.
+ * The pattern is treated as a full-string regular expression.
+ */
+export interface BuiltinExecAllowlistRule {
+  /** Regex source used to validate an entire command string */
+  pattern: string;
+  /** Optional human-readable note describing when the rule should be used */
+  description?: string;
+}
+
+/**
+ * Configuration for OpenManbo's built-in shell execution tool.
+ */
+export interface BuiltinExecToolConfig {
+  /** Whether the tool is enabled */
+  enabled?: boolean;
+  /** Tool name exposed to the model */
+  name?: string;
+  /** Tool description exposed to the model */
+  description?: string;
+  /** Working directory used for command execution */
+  cwd?: string;
+  /** Optional shell executable to launch (defaults to the platform shell) */
+  shell?: string;
+  /** Extra environment variables passed to the process */
+  env?: Record<string, string>;
+  /** Per-command timeout in milliseconds */
+  timeoutMs?: number;
+  /** Max combined stdout/stderr characters captured from the command */
+  maxOutputChars?: number;
+  /** Max accepted command length before validation fails */
+  maxCommandLength?: number;
+  /** Allowlist rules used to validate requested commands */
+  allowlist: BuiltinExecAllowlistRule[];
+}
+
+export interface BuiltinToolsConfig {
+  exec?: BuiltinExecToolConfig;
+}
+
+/**
  * A single MCP server entry can be either stdio or HTTP.
  */
 export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig;
@@ -61,5 +102,6 @@ export function isHttpConfig(cfg: McpServerConfig): cfg is McpHttpServerConfig {
  * ```
  */
 export interface McpConfig {
-  mcpServers: Record<string, McpServerConfig>;
+  mcpServers?: Record<string, McpServerConfig>;
+  builtinTools?: BuiltinToolsConfig;
 }

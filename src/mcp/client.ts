@@ -3,6 +3,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type OpenAI from "openai";
+import { BuiltinToolManager } from "./builtin.js";
 import {
   isStdioConfig,
   isHttpConfig,
@@ -31,13 +32,16 @@ interface McpServerEntry {
  */
 export class McpManager {
   private servers: McpServerEntry[] = [];
+  private builtinTools = new BuiltinToolManager();
 
   /**
    * Connect to all servers defined in the config.
    * Call this once before using `tools` or `call`.
    */
   async connect(config: McpConfig): Promise<void> {
-    for (const [name, serverCfg] of Object.entries(config.mcpServers)) {
+    this.builtinTools = new BuiltinToolManager(config.builtinTools);
+
+    for (const [name, serverCfg] of Object.entries(config.mcpServers ?? {})) {
       if (!this.isValidServerConfig(serverCfg)) {
         console.warn(
           `[MCP] Invalid config for server "${name}". Expected an object with a string "command" (stdio) or "url" (HTTP).`,
@@ -120,16 +124,19 @@ export class McpManager {
    * Returns all tools from all connected MCP servers as OpenAI tool definitions.
    */
   get tools(): OpenAI.ChatCompletionTool[] {
-    return this.servers.flatMap((server) =>
-      server.tools.map((tool) => ({
-        type: "function" as const,
-        function: {
-          name: tool.name,
-          description: tool.description ?? "",
-          parameters: (tool.inputSchema ?? { type: "object", properties: {} }) as OpenAI.FunctionParameters,
-        },
-      })),
-    );
+    return [
+      ...this.builtinTools.tools,
+      ...this.servers.flatMap((server) =>
+        server.tools.map((tool) => ({
+          type: "function" as const,
+          function: {
+            name: tool.name,
+            description: tool.description ?? "",
+            parameters: (tool.inputSchema ?? { type: "object", properties: {} }) as OpenAI.FunctionParameters,
+          },
+        })),
+      ),
+    ];
   }
 
   /**
@@ -137,6 +144,10 @@ export class McpManager {
    * Returns the tool result as a string.
    */
   async call(toolName: string, args: Record<string, unknown>): Promise<string> {
+    if (this.builtinTools.has(toolName)) {
+      return this.builtinTools.call(toolName, args);
+    }
+
     for (const server of this.servers) {
       const hasTool = server.tools.some((t) => t.name === toolName);
       if (hasTool) {
@@ -179,6 +190,6 @@ export class McpManager {
    * Whether any MCP servers with tools are connected.
    */
   get isActive(): boolean {
-    return this.servers.length > 0 && this.tools.length > 0;
+    return this.builtinTools.isActive || this.servers.length > 0;
   }
 }

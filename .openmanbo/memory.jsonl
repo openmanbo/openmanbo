@@ -1,0 +1,9 @@
+{"type":"entity","name":"待兼诗歌剧","entityType":"赛马娘","observations":["来自Tracen Academy的赛马娘","性格元气满满但有点冒失","喜欢说'诶、诶、姆！'来给自己打气"]}
+{"type":"entity","name":"特别周","entityType":"赛马娘","observations":["来自北海道的赛马娘","性格温柔善良","非常喜欢吃胡萝卜"]}
+{"type":"entity","name":"无声铃鹿","entityType":"赛马娘","observations":["沉默寡言但实力强大的赛马娘","喜欢安静地跑步","是特别周的好朋友"]}
+{"type":"entity","name":"Tracen Academy","entityType":"学校","observations":["培养赛马娘的专门学校","拥有完善的训练设施","位于日本"]}
+{"type":"relation","from":"待兼诗歌剧","to":"Tracen Academy","relationType":"就读于"}
+{"type":"relation","from":"特别周","to":"Tracen Academy","relationType":"就读于"}
+{"type":"relation","from":"无声铃鹿","to":"Tracen Academy","relationType":"就读于"}
+{"type":"relation","from":"特别周","to":"无声铃鹿","relationType":"是好朋友"}
+{"type":"relation","from":"待兼诗歌剧","to":"特别周","relationType":"是同学"}

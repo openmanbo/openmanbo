@@ -82,6 +82,7 @@ export class McpManager {
     const transport = new StdioClientTransport({
       command: cfg.command,
       args: cfg.args ?? [],
+      cwd: cfg.cwd ?? process.cwd(),
       env: cfg.env
         ? { ...cfg.env, ...process.env } as Record<string, string>
         : undefined,

@@ -12,14 +12,14 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-filesystem",
-        ".openmanbo/workspace"
+        "${dataDir}/filesystem"
       ]
     },
     "memory": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-memory"],
       "env": {
-        "MEMORY_FILE_PATH": ".openmanbo/memory.jsonl"
+        "MEMORY_FILE_PATH": "${dataDir}/memory.jsonl"
       }
     },
     "sequential-thinking": {

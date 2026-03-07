@@ -6,6 +6,8 @@ export interface McpStdioServerConfig {
   command: string;
   /** Arguments passed to the command */
   args?: string[];
+  /** Working directory for the spawned process */
+  cwd?: string;
   /** Extra environment variables injected into the server process (e.g. API tokens) */
   env?: Record<string, string>;
 }

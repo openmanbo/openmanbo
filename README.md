@@ -89,6 +89,50 @@ OpenManbo supports two transport types:
 
 Spawn a local process that communicates over stdin/stdout.
 
+Relative paths in stdio server configs are resolved from the parent directory of your `.openmanbo` data directory by default. In the common case where your config lives at `/path/to/project/.openmanbo/mcp.json`, paths like `.openmanbo/memory.jsonl` and `.openmanbo/workspace` resolve from `/path/to/project`. If a server needs a different base directory, set `cwd` explicitly in that server entry.
+
+String values in `mcp.json` support variable expansion before servers are launched. This applies to `args`, `cwd`, `env`, `url`, and `headers` values.
+
+| Variable | Meaning |
+|---|---|
+| `${dataDir}` | Absolute path to your `.openmanbo` directory |
+| `${workspaceDir}` | Parent directory of `.openmanbo` |
+| `${homeDir}` | Your OS home directory |
+| `${cwd}` | The current working directory of the OpenManbo process |
+| `${env:NAME}` | Environment variable `NAME` |
+| `${NAME}` | Shorthand for environment variable `NAME` |
+
+```json
+{
+  "mcpServers": {
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "cwd": "${workspaceDir}",
+      "env": {
+        "MEMORY_FILE_PATH": "${dataDir}/memory.jsonl"
+      }
+    }
+  }
+}
+```
+
+Example with environment variables:
+
+```json
+{
+  "mcpServers": {
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "env": {
+        "MEMORY_FILE_PATH": "${env:OPENMANBO_MEMORY_FILE}"
+      }
+    }
+  }
+}
+```
+
 | Field | Description |
 |---|---|
 | `command` | Executable to spawn (e.g. `npx`, `python`, `node`) |

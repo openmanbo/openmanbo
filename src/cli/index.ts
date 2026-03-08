@@ -2,9 +2,15 @@
 
 import { Command } from "commander";
 import { loadConfig } from "../config/env.js";
-import { createLLMClient, Agent } from "../kernel/index.js";
+import {
+  createLLMClient,
+  Agent,
+  buildSystemPrompt,
+  routeSkills,
+  buildSkillRouteMessages,
+} from "../kernel/index.js";
 import { DiscordChannel } from "../channel/index.js";
-import { resolveDataDir, readIdentity, readMcpConfig } from "../storage/index.js";
+import { resolveDataDir, readIdentity, readMcpConfig, readSkills } from "../storage/index.js";
 import { McpManager } from "../mcp/index.js";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -34,8 +40,9 @@ program
     });
 
     const dataDir = resolveDataDir(config.dataDir);
-    const [identity, mcpConfig] = await Promise.all([
+    const [identity, skills, mcpConfig] = await Promise.all([
       readIdentity(dataDir),
+      readSkills(dataDir),
       readMcpConfig(dataDir),
     ]);
 
@@ -48,8 +55,7 @@ program
     const agent = new Agent({
       client,
       model: config.model,
-      systemPrompt:
-        identity ?? "You are Manbo, a helpful and concise AI assistant.",
+      systemPrompt: buildSystemPrompt({ identity }),
       ...(mcp.isActive
         ? {
             tools: mcp.tools,
@@ -58,7 +64,15 @@ program
         : {}),
     });
 
-    for await (const chunk of agent.chat(prompt)) {
+    const routeResult = routeSkills({
+      channel: "cli",
+      message: prompt,
+      skills,
+    });
+
+    for await (const chunk of agent.chat(routeResult.content || prompt, undefined, {
+      turnMessages: buildSkillRouteMessages(routeResult.activeSkills),
+    })) {
       process.stdout.write(chunk);
     }
     process.stdout.write("\n");
@@ -84,8 +98,9 @@ program
     });
 
     const dataDir = resolveDataDir(config.dataDir);
-    const [identity, mcpConfig] = await Promise.all([
+    const [identity, skills, mcpConfig] = await Promise.all([
       readIdentity(dataDir),
+      readSkills(dataDir),
       readMcpConfig(dataDir),
     ]);
 
@@ -98,8 +113,7 @@ program
     const agent = new Agent({
       client,
       model: config.model,
-      systemPrompt:
-        identity ?? "You are Manbo, a helpful and concise AI assistant.",
+      systemPrompt: buildSystemPrompt({ identity }),
       ...(mcp.isActive
         ? {
             tools: mcp.tools,
@@ -128,7 +142,14 @@ program
       }
 
       process.stdout.write("Manbo: ");
-      for await (const chunk of agent.chat(userInput)) {
+      const routeResult = routeSkills({
+        channel: "cli",
+        message: userInput,
+        skills,
+      });
+      for await (const chunk of agent.chat(routeResult.content || userInput, undefined, {
+        turnMessages: buildSkillRouteMessages(routeResult.activeSkills),
+      })) {
         process.stdout.write(chunk);
       }
       process.stdout.write("\n\n");
@@ -163,8 +184,9 @@ program
     }
 
     const dataDir = resolveDataDir(config.dataDir);
-    const [identity, mcpConfig] = await Promise.all([
+    const [identity, skills, mcpConfig] = await Promise.all([
       readIdentity(dataDir),
+      readSkills(dataDir),
       readMcpConfig(dataDir),
     ]);
 
@@ -176,7 +198,8 @@ program
     const channel = new DiscordChannel({
       botToken: config.discordBotToken,
       appConfig: config,
-      systemPrompt: identity,
+      systemPrompt: buildSystemPrompt({ identity }),
+      skills,
       ...(mcp.isActive
         ? {
             mcpTools: mcp.tools,

@@ -3,6 +3,12 @@ import type { Message } from "discord.js";
 import type { Channel, ChannelMeta, InboundMessage } from "./types.js";
 import { Agent } from "../kernel/agent.js";
 import { createLLMClient } from "../kernel/llm.js";
+import { DEFAULT_SYSTEM_PROMPT } from "../kernel/prompt.js";
+import {
+  buildSkillRouteMessages,
+  routeSkills,
+  type SkillDefinition,
+} from "../kernel/index.js";
 import type { AppConfig } from "../config/env.js";
 import type OpenAI from "openai";
 
@@ -13,6 +19,8 @@ export interface DiscordChannelOptions {
   appConfig: AppConfig;
   /** Optional system prompt override. */
   systemPrompt?: string;
+  /** Loaded skill definitions available for routing. */
+  skills?: SkillDefinition[];
   /** MCP tool definitions to expose to the model. */
   mcpTools?: OpenAI.ChatCompletionTool[];
   /** Executor for MCP tool calls. */
@@ -36,6 +44,7 @@ export class DiscordChannel implements Channel {
   private agents: Map<string, Agent> = new Map();
   private appConfig: AppConfig;
   private systemPrompt: string;
+  private skills: SkillDefinition[];
   private mcpTools: OpenAI.ChatCompletionTool[] | undefined;
   private mcpToolExecutor:
     | ((name: string, args: Record<string, unknown>) => Promise<string>)
@@ -46,7 +55,8 @@ export class DiscordChannel implements Channel {
     this.appConfig = options.appConfig;
     this.systemPrompt =
       options.systemPrompt ??
-      "You are Manbo, a helpful and concise AI assistant.";
+      DEFAULT_SYSTEM_PROMPT;
+    this.skills = options.skills ?? [];
     this.mcpTools = options.mcpTools;
     this.mcpToolExecutor = options.mcpToolExecutor;
 
@@ -133,6 +143,16 @@ export class DiscordChannel implements Channel {
     };
 
     const agent = this.getOrCreateAgent(inbound.channelId);
+    const routeResult = routeSkills({
+      channel: "discord",
+      message: inbound.content,
+      skills: this.skills,
+    });
+
+    if (routeResult.usageHint && !routeResult.content) {
+      await message.reply(routeResult.usageHint);
+      return;
+    }
 
     try {
       if ("sendTyping" in message.channel) {
@@ -140,7 +160,13 @@ export class DiscordChannel implements Channel {
       }
 
       let fullResponse = "";
-      for await (const chunk of agent.chat(inbound.content, inbound.senderName)) {
+      for await (const chunk of agent.chat(
+        routeResult.content || inbound.content,
+        inbound.senderName,
+        {
+          turnMessages: buildSkillRouteMessages(routeResult.activeSkills),
+        },
+      )) {
         fullResponse += chunk;
       }
 

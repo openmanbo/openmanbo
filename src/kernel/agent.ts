@@ -23,6 +23,10 @@ export interface AgentOptions {
   ) => Promise<string>;
 }
 
+export interface AgentTurnOptions {
+  turnMessages?: ChatCompletionMessageParam[];
+}
+
 /**
  * The Agent class implements a conversational reasoning loop.
  * It manages conversation history and streams responses from the LLM.
@@ -76,13 +80,17 @@ export class Agent {
   async *chat(
     userMessage: string,
     name?: string,
+    options?: AgentTurnOptions,
   ): AsyncGenerator<string, void, undefined> {
-    this.messages.push(this.buildUserMessage(userMessage, name));
+    const transientTurnMessages = options?.turnMessages ?? [];
+    const turnMessages: ChatCompletionMessageParam[] = [
+      this.buildUserMessage(userMessage, name),
+    ];
 
     while (true) {
       const stream = await this.client.chat.completions.create({
         model: this.model,
-        messages: this.messages,
+        messages: [...this.messages, ...transientTurnMessages, ...turnMessages],
         stream: true,
         ...(this.tools ? { tools: this.tools } : {}),
       });
@@ -127,7 +135,7 @@ export class Agent {
 
       if (toolCalls.length > 0 && this.toolExecutor) {
         // Push the assistant message with tool_calls
-        this.messages.push({
+        turnMessages.push({
           role: "assistant",
           content: fullResponse || null,
           tool_calls: toolCalls.map((tc) => ({
@@ -151,7 +159,7 @@ export class Agent {
           } catch (err) {
             toolResult = `Error: ${String(err)}`;
           }
-          this.messages.push({
+          turnMessages.push({
             role: "tool",
             tool_call_id: tc.id,
             content: toolResult,
@@ -162,7 +170,8 @@ export class Agent {
       }
 
       // No tool calls – this is the final assistant response
-      this.messages.push({ role: "assistant", content: fullResponse });
+      turnMessages.push({ role: "assistant", content: fullResponse });
+      this.messages.push(...turnMessages);
       break;
     }
   }
@@ -174,13 +183,20 @@ export class Agent {
    * @param userMessage - The text content of the user message.
    * @param name - Optional speaker name to distinguish between participants.
    */
-  async run(userMessage: string, name?: string): Promise<string> {
-    this.messages.push(this.buildUserMessage(userMessage, name));
+  async run(
+    userMessage: string,
+    name?: string,
+    options?: AgentTurnOptions,
+  ): Promise<string> {
+    const transientTurnMessages = options?.turnMessages ?? [];
+    const turnMessages: ChatCompletionMessageParam[] = [
+      this.buildUserMessage(userMessage, name),
+    ];
 
     while (true) {
       const response = await this.client.chat.completions.create({
         model: this.model,
-        messages: this.messages,
+        messages: [...this.messages, ...transientTurnMessages, ...turnMessages],
         stream: false,
         ...(this.tools ? { tools: this.tools } : {}),
       });
@@ -192,7 +208,7 @@ export class Agent {
         message?.tool_calls?.length &&
         this.toolExecutor
       ) {
-        this.messages.push({
+        turnMessages.push({
           role: "assistant",
           content: message.content ?? null,
           tool_calls: message.tool_calls,
@@ -214,7 +230,7 @@ export class Agent {
           } catch (err) {
             toolResult = `Error: ${String(err)}`;
           }
-          this.messages.push({
+          turnMessages.push({
             role: "tool",
             tool_call_id: fnTc.id,
             content: toolResult,
@@ -224,7 +240,8 @@ export class Agent {
       }
 
       const content = message?.content ?? "";
-      this.messages.push({ role: "assistant", content });
+      turnMessages.push({ role: "assistant", content });
+      this.messages.push(...turnMessages);
       return content;
     }
   }

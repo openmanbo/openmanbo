@@ -56,6 +56,53 @@ manbo chat "How do I structure a Node.js monorepo?"
 
 If `IDENTITY.md` is absent or empty, the default system prompt is used (`You are Manbo, a helpful and concise AI assistant.`).
 
+#### `skills/`
+
+Place markdown files under `.openmanbo/skills` to add reusable operating policies on top of the base identity prompt.
+
+Every non-empty `.md` or `.markdown` file in that directory is loaded, sorted by path, and appended to the system prompt as an active skill. Skills can start with YAML frontmatter metadata for indexing and future routing. This is useful for tool-use policies, debugging playbooks, repo-specific conventions, or response style constraints that you do not want to mix directly into `IDENTITY.md`.
+
+```bash
+mkdir -p .openmanbo/skills
+cat > .openmanbo/skills/tool-use.md << 'EOF'
+---
+name: tool-use
+description: "Use when the task depends on tools, live workspace state, recent external facts, command execution, or multi-step planning."
+triggers:
+  - tool
+  - workspace
+  - command
+channels:
+  - cli
+  - discord
+---
+
+# Tool Use Policy
+
+Use available tools proactively when they improve accuracy, gather missing facts, or execute a requested action.
+
+- Use tools for live workspace state, commands, or external facts.
+- Use sequential-thinking for multi-step or ambiguous tasks.
+- Do not guess when a tool can verify the answer.
+EOF
+```
+
+Recommended frontmatter fields:
+
+- `name`: stable skill identifier
+- `description`: discovery text for indexing; include trigger phrases like "Use when..."
+- `triggers`: optional keywords for future routing
+- `channels`: optional channel hints such as `cli` or `discord`
+
+OpenManbo also supports lightweight skill routing:
+
+- Automatic routing: skills whose `triggers` match the current message can be activated for that turn.
+- Explicit routing: prefix a request with `/plan`, `/tools`, `/search`, or `/skills tool-use,planning ...`.
+- You can combine aliases in `/skills`, for example `/skills tools,plan ...` is equivalent to `/skills tool-use,planning ...`.
+- Discord and interactive CLI apply routing per message, so one routed request does not permanently change later turns.
+
+Skill files are always active when present, so keep them concise and operational. Use `IDENTITY.md` for persona and broad behavior, and use `skills/` for focused rules that should apply consistently.
+
 ### MCP Tools (`mcp.json`)
 
 OpenManbo supports [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers, allowing the agent to call external tools (e.g. web search, file access, GitHub operations).

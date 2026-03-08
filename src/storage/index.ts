@@ -8,6 +8,7 @@ import {
   type McpConfig,
   type McpServerConfig,
 } from "../mcp/types.js";
+import type { SkillDefinition } from "../kernel/prompt.js";
 
 const DEFAULT_DATA_DIR_NAME = ".openmanbo";
 const MCP_TEMPLATE_PATTERN = /\$\{([^}]+)\}/g;
@@ -18,6 +19,15 @@ interface McpTemplateContext {
   homeDir: string;
   cwd: string;
 }
+
+interface SkillFrontmatter {
+  name?: string;
+  description?: string;
+  triggers?: string[];
+  channels?: string[];
+}
+
+const SKILL_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 /**
  * Resolve the path to the .openmanbo storage directory.
@@ -191,6 +201,214 @@ export async function readIdentity(
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Read skill documents from the .openmanbo/skills directory.
+ * Returns all non-empty markdown files in lexical order.
+ */
+export async function readSkills(dataDir: string): Promise<SkillDefinition[]> {
+  const skillsDir = path.join(dataDir, "skills");
+
+  try {
+    const skillPaths = await collectSkillFiles(skillsDir, skillsDir);
+    const skills: Array<SkillDefinition | undefined> = await Promise.all(
+      skillPaths.map(async (skillPath) => {
+        const rawContent = await fs.readFile(skillPath, "utf-8");
+        const parsedSkill = parseSkillFile(rawContent);
+        if (!parsedSkill.content) {
+          return undefined;
+        }
+
+        const relativePath = path.relative(skillsDir, skillPath).replace(/\\/g, "/");
+        return {
+          name: parsedSkill.frontmatter.name?.trim() || inferSkillName(relativePath, parsedSkill.content),
+          description: parsedSkill.frontmatter.description?.trim() || undefined,
+          triggers: normalizeSkillList(parsedSkill.frontmatter.triggers),
+          channels: normalizeSkillList(parsedSkill.frontmatter.channels),
+          content: parsedSkill.content,
+          source: `skills/${relativePath}`,
+        } satisfies SkillDefinition;
+      }),
+    );
+
+    return skills.filter((skill): skill is SkillDefinition => skill !== undefined);
+  } catch {
+    return [];
+  }
+}
+
+async function collectSkillFiles(
+  directory: string,
+  rootDirectory: string,
+): Promise<string[]> {
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  const files = await Promise.all(
+    entries
+      .filter((entry) => !entry.name.startsWith("."))
+      .map(async (entry) => {
+        const fullPath = path.join(directory, entry.name);
+        if (entry.isDirectory()) {
+          return collectSkillFiles(fullPath, rootDirectory);
+        }
+
+        if (!entry.isFile() || !isSkillFile(entry.name)) {
+          return [];
+        }
+
+        return [fullPath];
+      }),
+  );
+
+  return files.flat().sort((left, right) => {
+    const leftRelative = path.relative(rootDirectory, left);
+    const rightRelative = path.relative(rootDirectory, right);
+    return leftRelative.localeCompare(rightRelative);
+  });
+}
+
+function isSkillFile(fileName: string): boolean {
+  return /\.(md|markdown)$/i.test(fileName);
+}
+
+function parseSkillFile(rawContent: string): {
+  frontmatter: SkillFrontmatter;
+  content: string;
+} {
+  const match = rawContent.match(SKILL_FRONTMATTER_PATTERN);
+  if (!match) {
+    return {
+      frontmatter: {},
+      content: rawContent.trim(),
+    };
+  }
+
+  return {
+    frontmatter: parseSkillFrontmatter(match[1]),
+    content: rawContent.slice(match[0].length).trim(),
+  };
+}
+
+function parseSkillFrontmatter(frontmatterBlock: string): SkillFrontmatter {
+  const metadata: SkillFrontmatter = {};
+  const lines = frontmatterBlock.split(/\r?\n/);
+  let activeListKey: keyof SkillFrontmatter | undefined;
+
+  for (const rawLine of lines) {
+    const trimmedLine = rawLine.trim();
+    if (!trimmedLine || trimmedLine.startsWith("#")) {
+      continue;
+    }
+
+    const listMatch = trimmedLine.match(/^-\s+(.+)$/);
+    if (listMatch && activeListKey && isListField(activeListKey)) {
+      const currentValues = metadata[activeListKey] ?? [];
+      metadata[activeListKey] = [...currentValues, stripYamlQuotes(listMatch[1])];
+      continue;
+    }
+
+    const fieldMatch = trimmedLine.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/);
+    if (!fieldMatch) {
+      activeListKey = undefined;
+      continue;
+    }
+
+    const [, rawKey, rawValue] = fieldMatch;
+    const key = normalizeSkillFrontmatterKey(rawKey);
+    if (!key) {
+      activeListKey = undefined;
+      continue;
+    }
+
+    const value = rawValue.trim();
+    if (isListField(key)) {
+      if (!value) {
+        metadata[key] = [];
+        activeListKey = key;
+        continue;
+      }
+
+      metadata[key] = parseInlineYamlList(value);
+      activeListKey = undefined;
+      continue;
+    }
+
+    metadata[key] = stripYamlQuotes(value);
+    activeListKey = undefined;
+  }
+
+  return metadata;
+}
+
+function normalizeSkillFrontmatterKey(
+  key: string,
+): keyof SkillFrontmatter | undefined {
+  const normalized = key.toLowerCase();
+  if (normalized === "name") {
+    return "name";
+  }
+  if (normalized === "description") {
+    return "description";
+  }
+  if (normalized === "triggers") {
+    return "triggers";
+  }
+  if (normalized === "channels") {
+    return "channels";
+  }
+
+  return undefined;
+}
+
+function isListField(key: keyof SkillFrontmatter): key is "triggers" | "channels" {
+  return key === "triggers" || key === "channels";
+}
+
+function parseInlineYamlList(value: string): string[] {
+  if (!(value.startsWith("[") && value.endsWith("]"))) {
+    return [stripYamlQuotes(value)].filter(Boolean);
+  }
+
+  return value
+    .slice(1, -1)
+    .split(",")
+    .map((item) => stripYamlQuotes(item.trim()))
+    .filter(Boolean);
+}
+
+function stripYamlQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+
+  return trimmed;
+}
+
+function normalizeSkillList(values: string[] | undefined): string[] {
+  if (!values?.length) {
+    return [];
+  }
+
+  return values
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function inferSkillName(relativePath: string, content: string): string {
+  const heading = content.match(/^#\s+(.+)$/m)?.[1]?.trim();
+  if (heading) {
+    return heading;
+  }
+
+  return relativePath
+    .replace(/\.(md|markdown)$/i, "")
+    .split("/")
+    .map((part) => part.replace(/[-_]+/g, " "))
+    .join(" / ");
 }
 
 /**

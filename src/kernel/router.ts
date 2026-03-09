@@ -5,7 +5,6 @@ import { buildSkillPrompt } from "./prompt.js";
 const MAX_AUTO_SKILLS = 3;
 
 export interface SkillRoutingOptions {
-  channel: string;
   message: string;
   skills: SkillDefinition[];
 }
@@ -25,7 +24,7 @@ interface ExplicitRouteMatch {
 }
 
 export function routeSkills(options: SkillRoutingOptions): SkillRouteResult {
-  const eligibleSkills = filterSkillsForChannel(options.skills, options.channel);
+  const eligibleSkills = options.skills;
   const explicitMatch = matchExplicitSkillRoute(options.message, eligibleSkills);
   if (explicitMatch) {
     const activeSkills = selectSkillsByName(eligibleSkills, explicitMatch.skillNames);
@@ -85,33 +84,28 @@ export function buildSkillRouteMessages(
   return [{ role: "system", content: skillPrompt }];
 }
 
-function filterSkillsForChannel(
-  skills: SkillDefinition[],
-  channel: string,
-): SkillDefinition[] {
-  const normalizedChannel = normalizeText(channel);
-  return skills.filter((skill) => {
-    if (!skill.channels.length) {
-      return true;
-    }
-
-    return skill.channels.some((entry) => normalizeText(entry) === normalizedChannel);
-  });
-}
-
 function matchExplicitSkillRoute(
   message: string,
   skills: SkillDefinition[],
 ): ExplicitRouteMatch | undefined {
   const trimmed = message.trim();
-  const simpleMatch = trimmed.match(/^\/(plan|tools?|search|inspect)\b\s*(.*)$/i);
+  const availableSkillNames = new Set(skills.map((skill) => normalizeSkillName(skill.name)));
+  const simpleMatch = trimmed.match(/^\/([A-Za-z0-9_-]+)\b\s*(.*)$/i);
   if (simpleMatch) {
     const [, command, rawContent] = simpleMatch;
-    const alias = normalizeExplicitAlias(command);
+    const normalizedCommand = normalizeSkillName(command);
+    if (normalizedCommand === "skills") {
+      return undefined;
+    }
+
+    if (!availableSkillNames.has(normalizedCommand)) {
+      return undefined;
+    }
+
     return {
-      skillNames: alias ? [alias] : [],
+      skillNames: [normalizedCommand],
       content: rawContent.trim(),
-      unknownSkillNames: alias ? [] : [command],
+      unknownSkillNames: [],
     };
   }
 
@@ -123,10 +117,9 @@ function matchExplicitSkillRoute(
   const [, rawSkillNames, rawContent = ""] = multiSkillMatch;
   const normalizedNames = rawSkillNames
     .split(",")
-    .map((name) => normalizeExplicitSkillToken(name))
+    .map((name) => normalizeSkillName(name))
     .filter(Boolean);
 
-  const availableSkillNames = new Set(skills.map((skill) => normalizeSkillName(skill.name)));
   const skillNames = normalizedNames.filter((name) => availableSkillNames.has(name));
   const unknownSkillNames = normalizedNames.filter((name) => !availableSkillNames.has(name));
 
@@ -135,26 +128,6 @@ function matchExplicitSkillRoute(
     content: rawContent.trim(),
     unknownSkillNames,
   };
-}
-
-function normalizeExplicitAlias(command: string): string | undefined {
-  const normalized = normalizeText(command);
-  if (normalized === "plan") {
-    return "planning";
-  }
-  if (normalized === "tool" || normalized === "tools" || normalized === "search") {
-    return "tool-use";
-  }
-  if (normalized === "inspect") {
-    return "workspace-inspection";
-  }
-
-  return undefined;
-}
-
-function normalizeExplicitSkillToken(value: string): string {
-  const normalized = normalizeSkillName(value);
-  return normalizeExplicitAlias(normalized) ?? normalized;
 }
 
 function selectSkillsByName(
@@ -167,7 +140,6 @@ function selectSkillsByName(
 
 function scoreSkill(skill: SkillDefinition, normalizedMessage: string): number {
   const candidates = [
-    ...skill.triggers,
     ...collectDescriptionPhrases(skill.description),
     skill.name,
   ];
@@ -204,14 +176,18 @@ function normalizeText(value: string): string {
 function buildUsageHint(availableSkillNames: string[]): string {
   const available = availableSkillNames.length
     ? `Available skills: ${availableSkillNames.join(", ")}`
-    : "No skills are currently available for this channel.";
+    : "No skills are currently available.";
+
+  const exampleSkill = availableSkillNames[0] ?? "plan";
+  const examplePair = availableSkillNames.slice(0, 2);
+  const multiSkillExample = examplePair.length >= 2
+    ? examplePair.join(",")
+    : `${exampleSkill},tools`;
 
   return [
     "Usage:",
-    "- /tools <request>",
-    "- /plan <request>",
-    "- /skills tool-use,planning <request>",
-    "- /skills tools,plan <request>",
+    `- /${exampleSkill} <request>`,
+    `- /skills ${multiSkillExample} <request>`,
     available,
   ].join("\n");
 }

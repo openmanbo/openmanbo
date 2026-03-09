@@ -23,8 +23,6 @@ interface McpTemplateContext {
 interface SkillFrontmatter {
   name?: string;
   description?: string;
-  triggers?: string[];
-  channels?: string[];
 }
 
 const SKILL_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
@@ -224,8 +222,6 @@ export async function readSkills(dataDir: string): Promise<SkillDefinition[]> {
         return {
           name: parsedSkill.frontmatter.name?.trim() || inferSkillName(relativePath, parsedSkill.content),
           description: parsedSkill.frontmatter.description?.trim() || undefined,
-          triggers: normalizeSkillList(parsedSkill.frontmatter.triggers),
-          channels: normalizeSkillList(parsedSkill.frontmatter.channels),
           content: parsedSkill.content,
           source: `skills/${relativePath}`,
         } satisfies SkillDefinition;
@@ -292,7 +288,6 @@ function parseSkillFile(rawContent: string): {
 function parseSkillFrontmatter(frontmatterBlock: string): SkillFrontmatter {
   const metadata: SkillFrontmatter = {};
   const lines = frontmatterBlock.split(/\r?\n/);
-  let activeListKey: keyof SkillFrontmatter | undefined;
 
   for (const rawLine of lines) {
     const trimmedLine = rawLine.trim();
@@ -300,41 +295,18 @@ function parseSkillFrontmatter(frontmatterBlock: string): SkillFrontmatter {
       continue;
     }
 
-    const listMatch = trimmedLine.match(/^-\s+(.+)$/);
-    if (listMatch && activeListKey && isListField(activeListKey)) {
-      const currentValues = metadata[activeListKey] ?? [];
-      metadata[activeListKey] = [...currentValues, stripYamlQuotes(listMatch[1])];
-      continue;
-    }
-
     const fieldMatch = trimmedLine.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.*)$/);
     if (!fieldMatch) {
-      activeListKey = undefined;
       continue;
     }
 
     const [, rawKey, rawValue] = fieldMatch;
     const key = normalizeSkillFrontmatterKey(rawKey);
     if (!key) {
-      activeListKey = undefined;
       continue;
     }
 
-    const value = rawValue.trim();
-    if (isListField(key)) {
-      if (!value) {
-        metadata[key] = [];
-        activeListKey = key;
-        continue;
-      }
-
-      metadata[key] = parseInlineYamlList(value);
-      activeListKey = undefined;
-      continue;
-    }
-
-    metadata[key] = stripYamlQuotes(value);
-    activeListKey = undefined;
+    metadata[key] = stripYamlQuotes(rawValue.trim());
   }
 
   return metadata;
@@ -350,30 +322,8 @@ function normalizeSkillFrontmatterKey(
   if (normalized === "description") {
     return "description";
   }
-  if (normalized === "triggers") {
-    return "triggers";
-  }
-  if (normalized === "channels") {
-    return "channels";
-  }
 
   return undefined;
-}
-
-function isListField(key: keyof SkillFrontmatter): key is "triggers" | "channels" {
-  return key === "triggers" || key === "channels";
-}
-
-function parseInlineYamlList(value: string): string[] {
-  if (!(value.startsWith("[") && value.endsWith("]"))) {
-    return [stripYamlQuotes(value)].filter(Boolean);
-  }
-
-  return value
-    .slice(1, -1)
-    .split(",")
-    .map((item) => stripYamlQuotes(item.trim()))
-    .filter(Boolean);
 }
 
 function stripYamlQuotes(value: string): string {

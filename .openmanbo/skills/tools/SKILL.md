@@ -1,17 +1,6 @@
 ---
-name: tool-use
-description: "Use when the task depends on tools, live workspace state, recent external facts, command execution, or multi-step planning with sequential-thinking."
-triggers:
-	- tool
-	- tools
-	- workspace
-	- command
-	- external facts
-	- recent information
-	- sequential-thinking
-channels:
-	- cli
-	- discord
+name: tools
+description: "Use when the task depends on a tool, tools, workspace state, command execution, external facts, recent information, or multi-step planning with sequential-thinking."
 ---
 
 # Tool Use Policy

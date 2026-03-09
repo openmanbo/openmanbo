@@ -1,18 +1,6 @@
 ---
-name: planning
-description: "Use when the request needs step-by-step analysis, task decomposition, tradeoff comparison, or explicit planning before acting. Prefer sequential-thinking for multi-step or ambiguous work."
-triggers:
-  - plan
-  - planning
-  - steps
-  - step by step
-  - analyze first
-  - break down
-  - tradeoff
-  - compare options
-channels:
-  - cli
-  - discord
+name: plan
+description: "Use when the request needs planning, a plan, step-by-step analysis, task decomposition, breaking work down, analyzing first, or comparing tradeoffs/options before acting. Prefer sequential-thinking for multi-step or ambiguous work."
 ---
 
 # Planning Workflow

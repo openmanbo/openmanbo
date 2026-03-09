@@ -65,7 +65,6 @@ program
     });
 
     const routeResult = routeSkills({
-      channel: "cli",
       message: prompt,
       skills,
     });
@@ -143,7 +142,6 @@ program
 
       process.stdout.write("Manbo: ");
       const routeResult = routeSkills({
-        channel: "cli",
         message: userInput,
         skills,
       });

@@ -51,6 +51,10 @@
         {
           "pattern": "gemini(?:\\s+[A-Za-z0-9._:/=,@+-]+)*",
           "description": "Run the Gemini CLI with simple arguments."
+        },
+        {
+          "pattern": "obsidian(?:\\s+[A-Za-z0-9._:/=,@+-]+)*",
+          "description": "Run the Obsidian CLI with simple arguments."
         }
       ]
     }

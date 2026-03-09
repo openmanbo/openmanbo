@@ -1,8 +1,6 @@
 export interface SkillDefinition {
   name: string;
   description?: string;
-  triggers: string[];
-  channels: string[];
   content: string;
   source: string;
 }

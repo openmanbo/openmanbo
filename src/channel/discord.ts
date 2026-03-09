@@ -204,7 +204,6 @@ export class DiscordChannel implements Channel {
 
     const agent = this.getOrCreateAgent(inbound.channelId);
     const routeResult = routeSkills({
-      channel: "discord",
       message: inbound.content,
       skills: this.skills,
     });

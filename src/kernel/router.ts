@@ -2,8 +2,6 @@ import type { ChatCompletionMessageParam } from "openai/resources/chat/completio
 import type { SkillDefinition } from "./prompt.js";
 import { buildSkillPrompt } from "./prompt.js";
 
-const MAX_AUTO_SKILLS = 3;
-
 export interface SkillRoutingOptions {
   message: string;
   skills: SkillDefinition[];
@@ -54,22 +52,11 @@ export function routeSkills(options: SkillRoutingOptions): SkillRouteResult {
     };
   }
 
-  const normalizedMessage = normalizeText(options.message);
-  const scoredSkills = eligibleSkills
-    .map((skill) => ({
-      skill,
-      score: scoreSkill(skill, normalizedMessage),
-    }))
-    .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score || left.skill.name.localeCompare(right.skill.name))
-    .slice(0, MAX_AUTO_SKILLS)
-    .map((entry) => entry.skill);
-
   return {
     content: options.message.trim(),
-    activeSkills: scoredSkills,
-    mode: scoredSkills.length ? "automatic" : "none",
-    matchedSkillNames: scoredSkills.map((skill) => skill.name),
+    activeSkills: [],
+    mode: "none",
+    matchedSkillNames: [],
   };
 }
 
@@ -98,14 +85,14 @@ function matchExplicitSkillRoute(
       return undefined;
     }
 
-    if (!availableSkillNames.has(normalizedCommand)) {
-      return undefined;
-    }
-
     return {
-      skillNames: [normalizedCommand],
+      skillNames: availableSkillNames.has(normalizedCommand)
+        ? [normalizedCommand]
+        : [],
       content: rawContent.trim(),
-      unknownSkillNames: [],
+      unknownSkillNames: availableSkillNames.has(normalizedCommand)
+        ? []
+        : [command],
     };
   }
 
@@ -136,33 +123,6 @@ function selectSkillsByName(
 ): SkillDefinition[] {
   const selected = new Set(skillNames.map((name) => normalizeSkillName(name)));
   return skills.filter((skill) => selected.has(normalizeSkillName(skill.name)));
-}
-
-function scoreSkill(skill: SkillDefinition, normalizedMessage: string): number {
-  const candidates = [
-    ...collectDescriptionPhrases(skill.description),
-    skill.name,
-  ];
-
-  return candidates.reduce((score, candidate) => {
-    const normalizedCandidate = normalizeText(candidate);
-    if (!normalizedCandidate) {
-      return score;
-    }
-
-    return normalizedMessage.includes(normalizedCandidate) ? score + normalizedCandidate.length : score;
-  }, 0);
-}
-
-function collectDescriptionPhrases(description: string | undefined): string[] {
-  if (!description) {
-    return [];
-  }
-
-  return description
-    .split(/[.,;]|\b(?:and|or|when|for|with)\b/gi)
-    .map((part) => part.trim())
-    .filter((part) => part.length >= 4);
 }
 
 function normalizeSkillName(value: string): string {

@@ -6,6 +6,7 @@ import {
   createLLMClient,
   Agent,
   buildSystemPrompt,
+  withSkillTool,
   routeSkills,
   buildSkillRouteMessages,
 } from "../kernel/index.js";
@@ -51,17 +52,18 @@ program
       await mcp.connect(mcpConfig);
     }
 
+    const toolConfig = withSkillTool({
+      skills,
+      tools: mcp.tools,
+      toolExecutor: mcp.call.bind(mcp),
+    });
+
     const client = createLLMClient(config);
     const agent = new Agent({
       client,
       model: config.model,
-      systemPrompt: buildSystemPrompt({ identity }),
-      ...(mcp.isActive
-        ? {
-            tools: mcp.tools,
-            toolExecutor: mcp.call.bind(mcp),
-          }
-        : {}),
+      systemPrompt: buildSystemPrompt({ identity, skills }),
+      ...(toolConfig.tools?.length ? toolConfig : {}),
     });
 
     const routeResult = routeSkills({
@@ -108,17 +110,18 @@ program
       await mcp.connect(mcpConfig);
     }
 
+    const toolConfig = withSkillTool({
+      skills,
+      tools: mcp.tools,
+      toolExecutor: mcp.call.bind(mcp),
+    });
+
     const client = createLLMClient(config);
     const agent = new Agent({
       client,
       model: config.model,
-      systemPrompt: buildSystemPrompt({ identity }),
-      ...(mcp.isActive
-        ? {
-            tools: mcp.tools,
-            toolExecutor: mcp.call.bind(mcp),
-          }
-        : {}),
+      systemPrompt: buildSystemPrompt({ identity, skills }),
+      ...(toolConfig.tools?.length ? toolConfig : {}),
     });
 
     const rl = readline.createInterface({ input, output });
@@ -196,7 +199,7 @@ program
     const channel = new DiscordChannel({
       botToken: config.discordBotToken,
       appConfig: config,
-      systemPrompt: buildSystemPrompt({ identity }),
+      systemPrompt: buildSystemPrompt({ identity, skills }),
       skills,
       ...(mcp.isActive
         ? {

@@ -3,10 +3,12 @@ export type { AgentOptions } from "./agent.js";
 export { createLLMClient } from "./llm.js";
 export {
 	buildSystemPrompt,
+	buildSkillCatalogPrompt,
 	buildSkillPrompt,
 	DEFAULT_SYSTEM_PROMPT,
 	type SkillDefinition,
 } from "./prompt.js";
+export { withSkillTool } from "./skill-tool.js";
 export {
 	routeSkills,
 	buildSkillRouteMessages,

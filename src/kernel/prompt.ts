@@ -8,6 +8,27 @@ export interface SkillDefinition {
 export const DEFAULT_SYSTEM_PROMPT =
   "You are Manbo, a helpful and concise AI assistant.";
 
+export function buildSkillCatalogPrompt(skills?: SkillDefinition[]): string | undefined {
+  const visibleSkills = skills?.filter((skill) => skill.description?.trim()) ?? [];
+
+  if (!visibleSkills.length) {
+    return undefined;
+  }
+
+  const skillLines = visibleSkills
+    .slice()
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((skill) => `- ${skill.name}: ${skill.description?.trim()}`);
+
+  return [
+    "## Available Skills",
+    "The following skills are available in this workspace.",
+    "When one is relevant, call the `load_skill` tool with the exact skill name to load its full instructions before using it.",
+    "Do not load skills speculatively. Continue normally when no skill is a clear fit.",
+    ...skillLines,
+  ].join("\n\n");
+}
+
 export function buildSkillPrompt(skills?: SkillDefinition[]): string | undefined {
   const activeSkills = skills?.filter((skill) => skill.content.trim()) ?? [];
 
@@ -39,7 +60,7 @@ export function buildSystemPrompt(options: {
   skills?: SkillDefinition[];
 }): string {
   const basePrompt = options.identity?.trim() || DEFAULT_SYSTEM_PROMPT;
-  const skillPrompt = buildSkillPrompt(options.skills);
+  const skillPrompt = buildSkillCatalogPrompt(options.skills);
 
   if (!skillPrompt) {
     return basePrompt;

@@ -7,6 +7,7 @@ import { DEFAULT_SYSTEM_PROMPT } from "../kernel/prompt.js";
 import {
   buildSkillRouteMessages,
   routeSkills,
+  withSkillTool,
   type SkillDefinition,
 } from "../kernel/index.js";
 import type { AppConfig } from "../config/env.js";
@@ -105,16 +106,16 @@ export class DiscordChannel implements Channel {
     let agent = this.agents.get(conversationId);
     if (!agent) {
       const llmClient = createLLMClient(this.appConfig);
+      const toolConfig = withSkillTool({
+        skills: this.skills,
+        tools: this.mcpTools,
+        toolExecutor: this.mcpToolExecutor,
+      });
       agent = new Agent({
         client: llmClient,
         model: this.appConfig.model,
         systemPrompt: this.systemPrompt,
-        ...(this.mcpTools?.length
-          ? {
-              tools: this.mcpTools,
-              toolExecutor: this.mcpToolExecutor,
-            }
-          : {}),
+        ...(toolConfig.tools?.length ? toolConfig : {}),
       });
       this.agents.set(conversationId, agent);
     }

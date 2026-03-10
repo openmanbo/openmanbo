@@ -7,6 +7,12 @@ import type {
 } from "./types.js";
 import { EXIT_CODE_RESTART } from "./types.js";
 
+/** Delay (ms) before restarting the agent after an unexpected crash. */
+const RESTART_DELAY_MS = 2_000;
+
+/** Delay (ms) to wait for the IPC channel to be ready before sending a message. */
+const IPC_READY_DELAY_MS = 500;
+
 export interface LifecycleManagerOptions {
   /** Absolute path to the agent script to fork. */
   agentScript: string;
@@ -135,7 +141,7 @@ export class LifecycleManager extends EventEmitter {
           this._restartCount++;
           this.spawn();
         }
-      }, 2_000);
+      }, RESTART_DELAY_MS);
     });
 
     this.child.on("error", (err) => {
@@ -181,7 +187,7 @@ export class LifecycleManager extends EventEmitter {
         stderr: buildStderr,
       };
       // Wait briefly for the IPC channel to be ready.
-      setTimeout(() => this.send(errMsg), 500);
+      setTimeout(() => this.send(errMsg), IPC_READY_DELAY_MS);
     }
   }
 

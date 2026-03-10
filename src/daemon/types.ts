@@ -50,7 +50,7 @@ export interface DaemonConfig {
 
 export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
   agentCommand: process.execPath, // node
-  agentArgs: ["dist/cli/index.ts"],
+  agentArgs: ["dist/cli/index.js"],
   adminPort: 7777,
   buildCommand: "npm run build",
 };

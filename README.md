@@ -26,6 +26,7 @@ pnpm dev interactive
 | `manbo chat <prompt>` | Send a single prompt and get a streamed response |
 | `manbo interactive` (or `manbo i`) | Start an interactive chat session |
 | `manbo discord` | Start the agent as a Discord bot |
+| `manbo daemon` | Start the background daemon (supervisor) for agent lifecycle management |
 
 ### Global Options
 
@@ -354,6 +355,12 @@ src/
 │   └── index.ts
 ├── config/        # Environment & configuration loading
 │   └── env.ts
+├── daemon/        # Background Daemon (Supervisor / Control Plane)
+│   ├── types.ts   # IPC message types, daemon config, status interfaces
+│   ├── lifecycle.ts # LifecycleManager – spawn, rebuild, self-heal
+│   ├── scheduler.ts # Interval-based background task scheduler
+│   ├── admin.ts   # Lightweight HTTP admin server (status, controls)
+│   └── index.ts
 ├── mcp/           # MCP (Model Context Protocol) client integration
 │   ├── types.ts   # McpConfig / McpServerConfig interfaces (stdio & HTTP)
 │   ├── client.ts  # McpManager – connects to servers, lists/calls tools
@@ -372,6 +379,7 @@ src/
 pnpm dev            # Run via tsx (no build needed)
 pnpm build          # Compile TypeScript to dist/
 pnpm start          # Run compiled output
+pnpm daemon         # Start the background daemon (after building)
 ```
 
 ## Docker

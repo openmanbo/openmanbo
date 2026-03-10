@@ -59,7 +59,11 @@ export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
 
 export interface ScheduledTask {
   id: string;
-  /** Cron expression (e.g. "0 0 * * *") or interval in milliseconds. */
+  /**
+   * Task schedule expressed as a fixed interval.
+   * - **number** – interval in milliseconds (e.g. `60_000`).
+   * - **string** – human-readable shorthand: `"30s"`, `"5m"`, `"2h"`.
+   */
   schedule: string | number;
   /** Optional JSON payload forwarded to the Agent via IPC. */
   payload?: Record<string, unknown>;

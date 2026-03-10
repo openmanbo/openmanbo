@@ -24,11 +24,11 @@ export class AdminServer {
     this.server = createServer((req, res) => this.handleRequest(req, res));
   }
 
-  /** Start listening on the given port. */
+  /** Start listening on the given port, bound to localhost only. */
   listen(port: number): Promise<void> {
     return new Promise((resolve) => {
-      this.server.listen(port, () => {
-        console.log(`[admin] HTTP server listening on http://localhost:${String(port)}`);
+      this.server.listen(port, "127.0.0.1", () => {
+        console.log(`[admin] HTTP server listening on http://127.0.0.1:${String(port)}`);
         resolve();
       });
     });
@@ -47,8 +47,11 @@ export class AdminServer {
     const url = req.url ?? "/";
     const method = req.method ?? "GET";
 
-    // CORS headers for local development.
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    // CORS headers – restricted to localhost origins.
+    const origin = req.headers.origin ?? "";
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+    }
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 

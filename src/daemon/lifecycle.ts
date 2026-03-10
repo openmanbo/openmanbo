@@ -10,8 +10,8 @@ import { EXIT_CODE_RESTART } from "./types.js";
 /** Delay (ms) before restarting the agent after an unexpected crash. */
 const RESTART_DELAY_MS = 2_000;
 
-/** Delay (ms) to wait for the IPC channel to be ready before sending a message. */
-const IPC_READY_DELAY_MS = 500;
+/** Timeout (ms) to wait for the agent to exit after SIGTERM before escalating to SIGKILL. */
+const STOP_TIMEOUT_MS = 10_000;
 
 export interface LifecycleManagerOptions {
   /** Absolute path to the agent script to fork. */
@@ -46,6 +46,8 @@ export class LifecycleManager extends EventEmitter {
   private _lastBuildError: string | undefined;
   private _startedAt = Date.now();
   private stopping = false;
+  /** Queued IPC messages to deliver once the agent signals readiness. */
+  private pendingMessages: IpcMessage[] = [];
 
   constructor(opts: LifecycleManagerOptions) {
     super();
@@ -86,17 +88,29 @@ export class LifecycleManager extends EventEmitter {
     this.spawn();
   }
 
-  /** Gracefully stop the agent process. */
+  /**
+   * Gracefully stop the agent process.
+   * Sends SIGTERM first; if the process does not exit within
+   * {@link STOP_TIMEOUT_MS} ms, escalates to SIGKILL.
+   */
   async stop(): Promise<void> {
     this.stopping = true;
     if (!this.child) return;
+    const child = this.child;
     return new Promise<void>((resolve) => {
-      this.child!.once("exit", () => {
+      const killTimer = setTimeout(() => {
+        console.warn("[daemon] Agent did not exit after SIGTERM; sending SIGKILL.");
+        child.kill("SIGKILL");
+      }, STOP_TIMEOUT_MS);
+
+      child.once("exit", () => {
+        clearTimeout(killTimer);
         this.child = null;
         this.setStatus("stopped");
         resolve();
       });
-      this.child!.kill("SIGTERM");
+
+      child.kill("SIGTERM");
     });
   }
 
@@ -116,11 +130,16 @@ export class LifecycleManager extends EventEmitter {
     });
 
     this.child.on("message", (msg: IpcMessage) => {
+      // When the agent signals readiness, flush any queued messages.
+      if (msg.type === "agent-ready") {
+        this.flushPendingMessages();
+      }
       this.emit("agent-message", msg);
     });
 
     this.child.on("exit", (code, signal) => {
       this.child = null;
+      this.pendingMessages = [];
 
       if (this.stopping) {
         this.setStatus("stopped");
@@ -177,17 +196,25 @@ export class LifecycleManager extends EventEmitter {
     }
 
     this._restartCount++;
-    this.spawn();
 
-    // If the build failed, inject the error into the new agent so it can
-    // attempt to fix its own code.
+    // If the build failed, queue the error so it is delivered once the
+    // agent sends its "agent-ready" IPC message.
     if (buildFailed) {
       const errMsg: IpcBuildError = {
         type: "build-error",
         stderr: buildStderr,
       };
-      // Wait briefly for the IPC channel to be ready.
-      setTimeout(() => this.send(errMsg), IPC_READY_DELAY_MS);
+      this.pendingMessages.push(errMsg);
+    }
+
+    this.spawn();
+  }
+
+  /** Deliver all queued messages to the agent. */
+  private flushPendingMessages(): void {
+    const msgs = this.pendingMessages.splice(0);
+    for (const msg of msgs) {
+      this.send(msg);
     }
   }
 

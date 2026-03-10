@@ -357,7 +357,7 @@ src/
 │   └── env.ts
 ├── daemon/        # Background Daemon (Supervisor / Control Plane)
 │   ├── types.ts   # IPC message types, daemon config, status interfaces
-│   ├── lifecycle.ts # AgentLifecycleManager – spawn, rebuild, self-heal
+│   ├── lifecycle.ts # LifecycleManager – spawn, rebuild, self-heal
 │   ├── scheduler.ts # Interval-based background task scheduler
 │   ├── admin.ts   # Lightweight HTTP admin server (status, controls)
 │   └── index.ts

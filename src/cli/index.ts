@@ -13,7 +13,7 @@ import {
 import { DiscordChannel } from "../channel/index.js";
 import { resolveDataDir, readIdentity, readMcpConfig, readSkills } from "../storage/index.js";
 import { McpManager } from "../mcp/index.js";
-import { LifecycleManager, Scheduler, AdminServer } from "../daemon/index.js";
+import { LifecycleManager, Scheduler, AdminServer, type IpcMessage } from "../daemon/index.js";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { resolve as resolvePath } from "node:path";
@@ -228,12 +228,12 @@ program
   .command("daemon")
   .description("Start the background daemon (supervisor) that manages the Agent lifecycle")
   .option("--agent-script <path>", "Path to the agent entry script", "dist/cli/index.js")
-  .option("--agent-cmd <args>", "Arguments forwarded to the agent (comma-separated)", "")
+  .option("--agent-args <args...>", "Arguments forwarded to the agent process")
   .option("--admin-port <port>", "Port for the admin HTTP server", "7777")
   .option("--build-command <cmd>", "Build command for rebuild cycles", "npm run build")
   .action(async (opts) => {
     const agentScript = resolvePath(opts.agentScript);
-    const agentArgs = opts.agentCmd ? (opts.agentCmd as string).split(",") : [];
+    const agentArgs: string[] = opts.agentArgs ?? ["discord"];
     const adminPort = Number(opts.adminPort);
     const buildCommand = opts.buildCommand as string;
 
@@ -268,3 +268,24 @@ program
   });
 
 program.parse();
+
+/* ── Agent-side IPC listener ──────────────────────────────────────── */
+// When the CLI is spawned as a child of the Daemon, set up a handler
+// for IPC messages and signal readiness.
+if (process.send) {
+  process.on("message", (msg: IpcMessage) => {
+    switch (msg.type) {
+      case "build-error":
+        console.error("[agent] Received build error from daemon:\n", msg.stderr);
+        break;
+      case "scheduled-task":
+        console.log(`[agent] Scheduled task "${msg.taskId}" triggered.`);
+        break;
+      default:
+        break;
+    }
+  });
+
+  // Signal the Daemon that we are ready to receive IPC messages.
+  process.send({ type: "agent-ready" });
+}

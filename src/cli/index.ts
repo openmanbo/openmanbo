@@ -13,8 +13,10 @@ import {
 import { DiscordChannel } from "../channel/index.js";
 import { resolveDataDir, readIdentity, readMcpConfig, readSkills } from "../storage/index.js";
 import { McpManager } from "../mcp/index.js";
+import { LifecycleManager, Scheduler, AdminServer } from "../daemon/index.js";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { resolve as resolvePath } from "node:path";
 
 const program = new Command();
 
@@ -219,6 +221,50 @@ program
 
     console.log("🚀 Starting Discord channel…");
     await channel.start();
+  });
+
+// ── daemon command: background supervisor ─────────────────────────
+program
+  .command("daemon")
+  .description("Start the background daemon (supervisor) that manages the Agent lifecycle")
+  .option("--agent-script <path>", "Path to the agent entry script", "dist/cli/index.js")
+  .option("--agent-cmd <args>", "Arguments forwarded to the agent (comma-separated)", "")
+  .option("--admin-port <port>", "Port for the admin HTTP server", "7777")
+  .option("--build-command <cmd>", "Build command for rebuild cycles", "npm run build")
+  .action(async (opts) => {
+    const agentScript = resolvePath(opts.agentScript);
+    const agentArgs = opts.agentCmd ? (opts.agentCmd as string).split(",") : [];
+    const adminPort = Number(opts.adminPort);
+    const buildCommand = opts.buildCommand as string;
+
+    const lifecycle = new LifecycleManager({
+      agentScript,
+      agentArgs,
+      buildCommand,
+    });
+
+    const scheduler = new Scheduler(lifecycle);
+    const admin = new AdminServer(lifecycle, scheduler);
+
+    // Graceful shutdown
+    const shutdown = async () => {
+      console.log("\n[daemon] Shutting down…");
+      scheduler.stopAll();
+      await lifecycle.stop();
+      await admin.close();
+      process.exit(0);
+    };
+    process.on("SIGINT", () => void shutdown());
+    process.on("SIGTERM", () => void shutdown());
+
+    lifecycle.on("status", (status: string) => {
+      console.log(`[daemon] Agent status → ${status}`);
+    });
+
+    await admin.listen(adminPort);
+    lifecycle.start();
+
+    console.log("[daemon] Daemon is running. Press Ctrl+C to stop.");
   });
 
 program.parse();

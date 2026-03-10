@@ -1,7 +1,7 @@
 import type OpenAI from "openai";
 import type { SkillDefinition } from "./prompt.js";
 
-const LOAD_SKILL_TOOL_NAME = "load_skill";
+const LOAD_SKILL_TOOL_NAME = "load-skill";
 
 type ToolExecutor = (
   name: string,

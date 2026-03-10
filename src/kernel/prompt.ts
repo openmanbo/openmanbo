@@ -23,7 +23,7 @@ export function buildSkillCatalogPrompt(skills?: SkillDefinition[]): string | un
   return [
     "## Available Skills",
     "The following skills are available in this workspace.",
-    "When one is relevant, call the `load_skill` tool with the exact skill name to load its full instructions before using it.",
+    "When one is relevant, call the `load-skill` tool with the exact skill name to load its full instructions before using it.",
     "Do not load skills speculatively. Continue normally when no skill is a clear fit.",
     ...skillLines,
   ].join("\n\n");

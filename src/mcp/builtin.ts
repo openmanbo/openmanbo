@@ -6,7 +6,7 @@ import type {
   McpConfig,
 } from "./types.js";
 
-const DEFAULT_EXEC_TOOL_NAME = "builtin_exec";
+const DEFAULT_EXEC_TOOL_NAME = "exec";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_OUTPUT_CHARS = 8_000;
 const DEFAULT_MAX_COMMAND_LENGTH = 1_000;

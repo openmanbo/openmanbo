@@ -222,7 +222,7 @@ OpenManbo can also expose a built-in shell execution tool directly from `mcp.jso
   "builtinTools": {
     "exec": {
       "enabled": true,
-      "name": "builtin_exec",
+      "name": "exec",
       "description": "Run allowlisted workspace commands only.",
       "cwd": "${workspaceDir}",
       "timeoutMs": 15000,
@@ -257,7 +257,7 @@ Built-in exec fields:
 | Field | Description |
 |---|---|
 | `enabled` | Enable or disable the built-in exec tool |
-| `name` | Tool name exposed to the model (default: `builtin_exec`) |
+| `name` | Tool name exposed to the model (default: `exec`) |
 | `description` | Tool description shown to the model |
 | `cwd` | Working directory for command execution |
 | `shell` | Optional shell executable path override |

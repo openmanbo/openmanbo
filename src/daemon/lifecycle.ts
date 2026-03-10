@@ -212,7 +212,8 @@ export class LifecycleManager extends EventEmitter {
 
   /** Deliver all queued messages to the agent. */
   private flushPendingMessages(): void {
-    const msgs = this.pendingMessages.splice(0);
+    const msgs = this.pendingMessages;
+    this.pendingMessages = [];
     for (const msg of msgs) {
       this.send(msg);
     }

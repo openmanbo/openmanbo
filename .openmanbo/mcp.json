@@ -54,8 +54,8 @@
           "description": "Run the Claude CLI with common arguments, including quoted values."
         },
         {
-          "pattern": "obsidian(?:\\s+[A-Za-z0-9._:/=,@+-]+)*",
-          "description": "Run the Obsidian CLI with simple arguments."
+          "pattern": "(?:obsidian|[^\\s]*/obsidian)(?:\\s+(?:[A-Za-z0-9._:/=,@+-]+|[A-Za-z0-9._:/,@+-]+=(?:[A-Za-z0-9._:/=,@+-]+|\"[^\"\\r\\n]*\"|'[^'\\r\\n]*')|\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'))*",
+          "description": "Run Obsidian CLI commands, including read/search with quoted arguments."
         }
       ]
     }

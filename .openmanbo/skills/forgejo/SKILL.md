@@ -25,6 +25,42 @@ Typical entry points:
 
 ---
 
+## Access Token & Git Authentication
+
+The Forgejo personal access token is not only used for API calls — it can also be used for **git operations over HTTPS** (clone, fetch, push, pull).
+
+### How to obtain the token
+
+Read the Forgejo MCP resource `forgejo://server/info`. It returns a JSON object with:
+
+```json
+{
+  "url": "https://<forgejo-host>",
+  "token": "<access-token>",
+  "user": { "login": "<username>", ... }
+}
+```
+
+Extract `token`, `url`, and `user.login` from this resource.
+
+### Using the token for git operations
+
+Authenticate using the token in the HTTPS URL:
+
+```
+git clone https://<username>:<token>@<forgejo-host>/<owner>/<repo>.git
+```
+
+Or configure the remote for an existing repository:
+
+```
+git remote set-url origin https://<username>:<token>@<forgejo-host>/<owner>/<repo>.git
+```
+
+This is essential for `forgejo-coder` workflows (pushing branches, opening PRs) and any scenario that requires direct git access.
+
+---
+
 ## Forgejo MCP Tool Reference
 
 Always be aware of the full tool set. Choose the right tool for the situation.
@@ -161,6 +197,7 @@ The base `forgejo` skill handles **discovery and routing**. Sub-skills handle **
 3. If no assigned issues, search for **available unassigned work**:
    - `search_issues` with relevant labels (e.g. `help wanted`, `good first issue`) or by repo.
    - Filter out issues that are blocked, in-progress by others, or lack clear acceptance criteria.
+   - **Skip any issue that already has assignees** — if `assignees` is non-empty and does not include the agent's own username, the issue belongs to someone else. Do not claim it, comment on it, or start work on it.
 4. Rank candidates by:
    - Clarity of acceptance criteria.
    - Recent activity and urgency signals (labels, milestones).
@@ -185,14 +222,16 @@ The base `forgejo` skill handles **discovery and routing**. Sub-skills handle **
 2. Fetch full context:
    - `get_issue` or `get_pull_request` for the parent item.
    - `list_issue_comments` or `list_pull_request_reviews` for the full conversation thread.
-3. Understand what is being asked:
+3. **Check assignees first**: Before deciding how to respond, inspect the issue/PR's `assignees` field.
+   - If the issue is **assigned to someone else** (i.e. `assignees` is non-empty and does not include the agent's own username), **do not take action on the issue**. The agent may answer a direct question or provide information, but must **not** self-assign, start implementation, or post a comment claiming ownership. If asked to fix or implement something on an issue assigned to someone else, politely decline and explain that the issue is already assigned.
+4. Understand what is being asked:
    - **A question** → research and reply with `create_comment`.
-   - **A request to take action** (e.g. "can you fix this?") → **first** acknowledge with a comment (e.g. "Got it, I'll take a look."), **then** load the appropriate sub-skill (`forgejo-coder` for implementation). Always reply before starting the actual work.
+   - **A request to take action** (e.g. "can you fix this?") → **first** check assignees (see above). If unassigned or assigned to the agent, acknowledge with a comment (e.g. "Got it, I'll take a look."), **then** load the appropriate sub-skill (`forgejo-coder` for implementation). Always reply before starting the actual work.
    - **A status check** (e.g. "any update?") → check memory for current task state and reply.
    - **An FYI / informational mention** → acknowledge briefly or skip if no response is needed.
-4. **Always reply before acting**: for any mention that leads to further work (implementation, review, investigation), post an acknowledgement comment first via `create_comment`, then proceed with the task.
-5. When replying, be concise and reference specific context (issue numbers, code lines, prior comments).
-6. If the mention requires implementation work, do not start coding in the reply — load the sub-skill and link back.
+5. **Always reply before acting**: for any mention that leads to further work (implementation, review, investigation), post an acknowledgement comment first via `create_comment`, then proceed with the task.
+6. When replying, be concise and reference specific context (issue numbers, code lines, prior comments).
+7. If the mention requires implementation work, do not start coding in the reply — load the sub-skill and link back.
 
 ---
 
@@ -263,6 +302,12 @@ Record structured facts at each major workflow checkpoint:
 - Always call `get_user` at the start of any workflow to confirm identity.
 - Do not perform write actions (assign, comment, create PR, merge) on repositories without confirmed write access.
 - Do not self-assign issues in repositories the agent does not contribute to unless the user explicitly requests it.
+
+### Respecting Assignments
+- **Never work on an issue that is already assigned to someone else.** Before taking action on any issue, check the `assignees` field. If it contains users other than the agent itself, treat the issue as owned by those assignees.
+- When discovering work (Scenario B), always skip issues with existing assignees.
+- When responding to @ mentions (Scenario C) on an issue assigned to someone else, the agent may answer questions or provide information but must **not** self-assign, start implementation, or claim the task.
+- If the user explicitly asks the agent to work on an issue assigned to someone else, inform the user that the issue is already assigned and ask for confirmation before proceeding.
 
 ### Safety
 - **Never auto-merge** a PR without explicit user approval.

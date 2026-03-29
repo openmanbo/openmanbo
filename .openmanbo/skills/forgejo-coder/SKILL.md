@@ -151,7 +151,7 @@ These rules apply across all scenarios in this skill:
 - Keep every commit focused on a single task.
 
 ### Safety
-- Before pushing, verify that the git `origin` remote is configured correctly (`git remote -v`). If the remote URL is missing or points to the wrong repository, fix it before pushing.
+- Before pushing, verify that the git `origin` remote is configured correctly (`git remote -v`). If the remote URL is missing or points to the wrong repository, fix it before pushing. If authentication is needed, read the `forgejo://server/info` MCP resource to get the access token and instance URL, then use them in the HTTPS git URL — see the base `forgejo` skill's "Access Token & Git Authentication" section for details.
 - Do not open a merge request with failing checks unless the user explicitly accepts the risk.
 - Do not force-push or rewrite shared branch history.
 - Do not push to existing branches (e.g. `main`, `master`, `develop`). Always create a new feature branch (e.g. `issue/<number>-<slug>`).

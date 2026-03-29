@@ -702,5 +702,194 @@ exports.TOOLS = [
             },
         },
     },
+    // -------------------------------------------------------------------------
+    // Pull Request Review tools
+    // -------------------------------------------------------------------------
+    {
+        name: "create_pull_request_review",
+        description: "Create/submit a review on a pull request. You can approve, request changes, " +
+            "leave a comment, or create a pending review with optional line-level comments. " +
+            "Uses POST /api/v1/repos/{owner}/{repo}/pulls/{index}/reviews.",
+        inputSchema: {
+            type: "object",
+            required: ["owner", "repo", "index", "event"],
+            properties: {
+                owner: { type: "string", description: "Repository owner." },
+                repo: { type: "string", description: "Repository name." },
+                index: {
+                    type: "integer",
+                    description: "Pull request number.",
+                    minimum: 1,
+                },
+                event: {
+                    type: "string",
+                    enum: ["APPROVED", "REQUEST_CHANGES", "COMMENT", "PENDING"],
+                    description: "Review event type: APPROVED, REQUEST_CHANGES, COMMENT, or PENDING.",
+                },
+                body: {
+                    type: "string",
+                    description: "Review body/comment (Markdown supported).",
+                },
+                commit_id: {
+                    type: "string",
+                    description: "SHA of the commit to review. Defaults to the latest commit if omitted.",
+                },
+                comments: {
+                    type: "array",
+                    description: "Line-level comments to include with the review.",
+                    items: {
+                        type: "object",
+                        required: ["body", "path"],
+                        properties: {
+                            body: {
+                                type: "string",
+                                description: "Comment text (Markdown supported).",
+                            },
+                            path: {
+                                type: "string",
+                                description: "Relative file path the comment refers to.",
+                            },
+                            new_position: {
+                                type: "integer",
+                                description: "Line number in the new file (for added/changed lines).",
+                            },
+                            old_position: {
+                                type: "integer",
+                                description: "Line number in the old file (for removed lines).",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+    {
+        name: "get_pull_request_review",
+        description: "Get details of a specific review on a pull request. " +
+            "Uses GET /api/v1/repos/{owner}/{repo}/pulls/{index}/reviews/{review_id}.",
+        inputSchema: {
+            type: "object",
+            required: ["owner", "repo", "index", "review_id"],
+            properties: {
+                owner: { type: "string", description: "Repository owner." },
+                repo: { type: "string", description: "Repository name." },
+                index: {
+                    type: "integer",
+                    description: "Pull request number.",
+                    minimum: 1,
+                },
+                review_id: {
+                    type: "integer",
+                    description: "Review ID.",
+                    minimum: 1,
+                },
+            },
+        },
+    },
+    {
+        name: "submit_pull_request_review",
+        description: "Submit a pending review on a pull request. " +
+            "Uses POST /api/v1/repos/{owner}/{repo}/pulls/{index}/reviews/{review_id}.",
+        inputSchema: {
+            type: "object",
+            required: ["owner", "repo", "index", "review_id", "event"],
+            properties: {
+                owner: { type: "string", description: "Repository owner." },
+                repo: { type: "string", description: "Repository name." },
+                index: {
+                    type: "integer",
+                    description: "Pull request number.",
+                    minimum: 1,
+                },
+                review_id: {
+                    type: "integer",
+                    description: "Review ID of the pending review.",
+                    minimum: 1,
+                },
+                event: {
+                    type: "string",
+                    enum: ["APPROVED", "REQUEST_CHANGES", "COMMENT"],
+                    description: "Review event to submit as.",
+                },
+                body: {
+                    type: "string",
+                    description: "Updated review body (Markdown supported).",
+                },
+            },
+        },
+    },
+    {
+        name: "delete_pull_request_review",
+        description: "Delete a review on a pull request. " +
+            "Uses DELETE /api/v1/repos/{owner}/{repo}/pulls/{index}/reviews/{review_id}.",
+        inputSchema: {
+            type: "object",
+            required: ["owner", "repo", "index", "review_id"],
+            properties: {
+                owner: { type: "string", description: "Repository owner." },
+                repo: { type: "string", description: "Repository name." },
+                index: {
+                    type: "integer",
+                    description: "Pull request number.",
+                    minimum: 1,
+                },
+                review_id: {
+                    type: "integer",
+                    description: "Review ID to delete.",
+                    minimum: 1,
+                },
+            },
+        },
+    },
+    {
+        name: "dismiss_pull_request_review",
+        description: "Dismiss a review on a pull request. " +
+            "Uses POST /api/v1/repos/{owner}/{repo}/pulls/{index}/reviews/{review_id}/dismissals.",
+        inputSchema: {
+            type: "object",
+            required: ["owner", "repo", "index", "review_id", "message"],
+            properties: {
+                owner: { type: "string", description: "Repository owner." },
+                repo: { type: "string", description: "Repository name." },
+                index: {
+                    type: "integer",
+                    description: "Pull request number.",
+                    minimum: 1,
+                },
+                review_id: {
+                    type: "integer",
+                    description: "Review ID to dismiss.",
+                    minimum: 1,
+                },
+                message: {
+                    type: "string",
+                    description: "Reason for dismissing the review.",
+                },
+            },
+        },
+    },
+    {
+        name: "get_pull_request_review_comments",
+        description: "List comments of a specific review on a pull request. " +
+            "Uses GET /api/v1/repos/{owner}/{repo}/pulls/{index}/reviews/{review_id}/comments.",
+        inputSchema: {
+            type: "object",
+            required: ["owner", "repo", "index", "review_id"],
+            properties: {
+                owner: { type: "string", description: "Repository owner." },
+                repo: { type: "string", description: "Repository name." },
+                index: {
+                    type: "integer",
+                    description: "Pull request number.",
+                    minimum: 1,
+                },
+                review_id: {
+                    type: "integer",
+                    description: "Review ID.",
+                    minimum: 1,
+                },
+            },
+        },
+    },
 ];
 //# sourceMappingURL=tools.js.map

@@ -143,4 +143,25 @@ export interface ChangedFile {
     contents_url: string;
     previous_filename?: string;
 }
+export interface PullRequestReviewComment {
+    id: number;
+    html_url: string;
+    pull_request_url: string;
+    user: User;
+    body: string;
+    path: string;
+    diff_hunk: string;
+    old_position?: number;
+    position?: number;
+    commit_id: string;
+    original_commit_id: string;
+    created_at: string;
+    updated_at: string;
+}
+export interface CreateReviewComment {
+    body: string;
+    path: string;
+    new_position?: number;
+    old_position?: number;
+}
 //# sourceMappingURL=types.d.ts.map

@@ -171,6 +171,18 @@ async function handleTool(client, toolName, args) {
                 return await getPullRequestFiles(client, args);
             case "list_pull_request_reviews":
                 return await listPullRequestReviews(client, args);
+            case "create_pull_request_review":
+                return await createPullRequestReview(client, args);
+            case "get_pull_request_review":
+                return await getPullRequestReview(client, args);
+            case "submit_pull_request_review":
+                return await submitPullRequestReview(client, args);
+            case "delete_pull_request_review":
+                return await deletePullRequestReview(client, args);
+            case "dismiss_pull_request_review":
+                return await dismissPullRequestReview(client, args);
+            case "get_pull_request_review_comments":
+                return await getPullRequestReviewComments(client, args);
             case "update_pull_request_branch":
                 return await updatePullRequestBranch(client, args);
             default:
@@ -387,6 +399,51 @@ async function listPullRequestReviews(client, args) {
         return `No reviews on pull request #${index} in ${owner}/${repo}.`;
     }
     return `${reviews.length} review(s) on PR #${index}:\n\n${reviews.map(formatReview).join("\n\n")}`;
+}
+async function createPullRequestReview(client, args) {
+    const { owner, repo, index, event, body, commit_id, comments } = args;
+    const review = await client.post(`/repos/${owner}/${repo}/pulls/${index}/reviews`, { body, event, commit_id, comments });
+    return `Review created successfully:\n\n${formatReview(review)}`;
+}
+async function getPullRequestReview(client, args) {
+    const { owner, repo, index, review_id } = args;
+    const review = await client.get(`/repos/${owner}/${repo}/pulls/${index}/reviews/${review_id}`);
+    return formatReview(review);
+}
+async function submitPullRequestReview(client, args) {
+    const { owner, repo, index, review_id, event, body } = args;
+    const review = await client.post(`/repos/${owner}/${repo}/pulls/${index}/reviews/${review_id}`, { body, event });
+    return `Review submitted successfully:\n\n${formatReview(review)}`;
+}
+async function deletePullRequestReview(client, args) {
+    const { owner, repo, index, review_id } = args;
+    await client.delete(`/repos/${owner}/${repo}/pulls/${index}/reviews/${review_id}`);
+    return `Review #${review_id} on PR #${index} in ${owner}/${repo} deleted successfully.`;
+}
+async function dismissPullRequestReview(client, args) {
+    const { owner, repo, index, review_id, message } = args;
+    const review = await client.post(`/repos/${owner}/${repo}/pulls/${index}/reviews/${review_id}/dismissals`, { message });
+    return `Review dismissed successfully:\n\n${formatReview(review)}`;
+}
+function formatReviewComment(comment) {
+    return [
+        `Comment #${comment.id} by ${comment.user.login} on ${comment.path}`,
+        comment.position !== undefined ? `  Line: ${comment.position}` : "",
+        `  Body: ${comment.body}`,
+        comment.diff_hunk ? `  Diff hunk:\n${comment.diff_hunk}` : "",
+        `  Created: ${comment.created_at}`,
+        `  URL: ${comment.html_url}`,
+    ]
+        .filter(Boolean)
+        .join("\n");
+}
+async function getPullRequestReviewComments(client, args) {
+    const { owner, repo, index, review_id } = args;
+    const comments = await client.get(`/repos/${owner}/${repo}/pulls/${index}/reviews/${review_id}/comments`);
+    if (!comments || comments.length === 0) {
+        return `No comments on review #${review_id} for PR #${index} in ${owner}/${repo}.`;
+    }
+    return `${comments.length} comment(s) on review #${review_id}:\n\n${comments.map(formatReviewComment).join("\n\n")}`;
 }
 async function updatePullRequestBranch(client, args) {
     const { owner, repo, index, style } = args;

@@ -1,6 +1,6 @@
 ---
 name: forgejo
-description: "Use when interacting with Forgejo in any way: triaging notifications, discovering new issues, responding to @ mentions, checking PR status, exploring repositories, or performing any Git-forge workflow on Forgejo. This is the base skill — load specialized sub-skills (forgejo-coder, etc.) when the task requires implementation or deep review."
+description: "Use when interacting with Forgejo in any way: triaging notifications, discovering new issues, responding to @ mentions, checking PR status, exploring repositories, or performing any Git-forge workflow on Forgejo. This is the base skill — load specialized sub-skills (forgejo-coder, forgejo-reviewer) when the task requires implementation or code review."
 ---
 
 # Forgejo Skill
@@ -10,7 +10,7 @@ description: "Use when interacting with Forgejo in any way: triaging notificatio
 This skill gives the agent full situational awareness of Forgejo-hosted projects. It handles **exploration, triage, communication, and coordination** — everything the agent needs to understand what is happening on Forgejo and decide what to do next.
 
 For **implementation** (coding, committing, opening PRs, addressing review feedback), load the `forgejo-coder` sub-skill.
-Future sub-skills (e.g. `forgejo-reviewer`) can extend this base with additional specialized workflows.
+For **code review** (reading diffs, leaving structured reviews, approving/requesting changes), load the `forgejo-reviewer` sub-skill.
 
 Typical entry points:
 
@@ -62,6 +62,17 @@ Always be aware of the full tool set. Choose the right tool for the situation.
 | `mark_notification_read` | Mark a single notification thread as read |
 | `mark_all_notifications_read` | Mark all notifications as read (optionally filter by date) |
 
+### PR Review
+
+| Tool | Purpose |
+|---|---|
+| `create_pull_request_review` | Submit a review (APPROVED / REQUEST_CHANGES / COMMENT / PENDING) with optional line-level comments |
+| `get_pull_request_review` | Get details of a specific review by review_id |
+| `submit_pull_request_review` | Submit a previously created PENDING review |
+| `delete_pull_request_review` | Delete a review |
+| `dismiss_pull_request_review` | Dismiss a review with a reason message |
+| `get_pull_request_review_comments` | List line-level comments of a specific review |
+
 ---
 
 ## Decision Routing
@@ -83,8 +94,11 @@ START
  ├─ A specific issue needs implementation / PR change requests
  │   └─► Load sub-skill: forgejo-coder
  │
- ├─ User asks to review or merge a PR
- │   └─► Scenario D: Review & Merge PRs
+ ├─ User asks to review a PR / PR review requested
+ │   └─► Load sub-skill: forgejo-reviewer
+ │
+ ├─ User asks to merge a PR that is already approved
+ │   └─► Scenario D: Merge PRs
  │
  └─ Ambiguous — start with Scenario A to get situational awareness,
      then route from there
@@ -102,7 +116,8 @@ When a scenario requires specialized work, load the appropriate sub-skill via `l
 |---|---|---|
 | Issue selected for implementation | `forgejo-coder` | After Scenario B selects a task, or when Scenario C identifies an action request |
 | PR has review comments requesting code changes | `forgejo-coder` | When triage or notification identifies change requests on the agent's PR |
-| Deep code review needed | *(future: `forgejo-reviewer`)* | When Scenario D needs thorough review beyond simple feedback |
+| PR needs code review | `forgejo-reviewer` | When triage identifies a review request, user asks to review a PR, or Scenario C routes a review mention |
+| PR author has addressed review feedback | `forgejo-reviewer` | When notification indicates new commits on a previously reviewed PR |
 
 The base `forgejo` skill handles **discovery and routing**. Sub-skills handle **execution**.
 
@@ -121,7 +136,7 @@ The base `forgejo` skill handles **discovery and routing**. Sub-skills handle **
 3. Classify each notification:
    - **Issue assignment** → note for Scenario B or sub-skill routing.
    - **@ mention in issue/PR** → note for Scenario C.
-   - **Review request or review comment** → note for sub-skill routing (forgejo-coder).
+   - **Review request or review comment** → note for sub-skill routing (forgejo-reviewer for reviewing, forgejo-coder if the agent's own PR received feedback).
    - **PR merged / issue closed** → informational, summarize only.
 4. For each actionable notification, fetch context with `get_issue` or `get_pull_request` as appropriate.
 5. Prioritize actionable items:
@@ -181,28 +196,25 @@ The base `forgejo` skill handles **discovery and routing**. Sub-skills handle **
 
 ---
 
-### Scenario D: Review & Merge PRs
+### Scenario D: Merge PRs
 
-**When**: The agent is asked to review someone else's PR, or to merge a PR that is ready.
+**When**: The agent is asked to merge a PR that is already approved, or to perform a simple merge check.
+
+For **full code review** (reading diffs, leaving line-level comments, approving/requesting changes), load the `forgejo-reviewer` sub-skill instead.
 
 **Steps**:
 
 1. Fetch PR context:
    - `get_pull_request` for metadata.
-   - `get_pull_request_diff` for the full diff.
-   - `get_pull_request_files` for the file list.
    - `list_pull_request_reviews` for existing reviews.
-   - `list_issue_comments` for discussion.
-2. If reviewing:
-   - Read the diff carefully. Check for correctness, style, test coverage, unintended changes.
-   - Post review comments via `create_comment` with specific, actionable feedback.
-   - Reference line numbers and file paths.
-3. If merging:
-   - Confirm all checks pass and the PR is approved.
-   - Confirm the PR title does **not** start with `WIP: ` — if it does, the PR is not ready to merge.
-   - Use `merge_pull_request` with the appropriate method (`Do`: `merge`, `rebase`, or `squash` — follow project convention).
+2. Confirm merge readiness:
+   - The PR has at least one APPROVED review.
+   - The PR title does **not** start with `WIP: `.
+   - The PR state is `open`.
+3. If the branch is behind base, use `update_pull_request_branch` before merging.
+4. Call `merge_pull_request` with the appropriate method (`Do`: `merge`, `rebase`, or `squash` — follow project convention).
    - Optionally set `delete_branch_after_merge: true` for cleanup.
-4. If the branch is behind base, use `update_pull_request_branch` before merging.
+5. Requires **explicit user approval** before executing the merge.
 
 ---
 

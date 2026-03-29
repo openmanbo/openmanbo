@@ -54,7 +54,7 @@ This skill does **not** handle discovery, triage, or notification routing — th
 6. After pushing, post a summary comment via `create_comment`:
    - List what was changed per review point.
    - Note anything intentionally not changed, with reasoning.
-   - Request re-review if appropriate.
+   - **@ mention the reviewer(s)** who requested changes, notifying them that fixes are ready for re-review. Get reviewer usernames from `list_pull_request_reviews`. Example: `@reviewer-username I've addressed your feedback — please take another look.`
 7. **Update memory**: record that review feedback was addressed, with a summary of changes made.
 
 ---
@@ -125,8 +125,20 @@ In both cases:
   - `list_pull_request_reviews` and `list_issue_comments` on the PR.
 - If changes are requested, route to **Scenario A** (Handle PR Change Requests).
 - When all implementation and review feedback are addressed and validation passes, **remove the `WIP: ` prefix** from the PR title via `edit_pull_request`.
+- After removing the `WIP: ` prefix, **@ mention the reviewer(s)** via `create_comment` to signal the PR is ready for final review or merge. Example: `@reviewer-username WIP removed — this PR is ready for final review.`
 - The task is done only when the PR is approved or merged.
 - **Update memory** at each state change: PR opened → review received → changes pushed → WIP removed → merged/closed.
+
+---
+
+## @ Mention Rules
+
+These rules apply across all scenarios in this skill:
+
+1. **After addressing review feedback** (Scenario A step 6): Always @ mention the **reviewer(s)** who requested changes. Get their usernames from `list_pull_request_reviews` — look for reviews with `REQUEST_CHANGES` state.
+2. **After removing WIP prefix** (Scenario B step B.8): @ mention the reviewer(s) to signal readiness for final review.
+3. **Never assume** who the reviewer is — always check `list_pull_request_reviews` for the actual reviewer usernames.
+4. **Format**: Use `@username` at the start of a `create_comment` on the PR, with a brief summary of what action is needed.
 
 ---
 

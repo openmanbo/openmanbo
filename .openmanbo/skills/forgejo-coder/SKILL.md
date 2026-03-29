@@ -139,6 +139,7 @@ In both cases:
 - Keep every commit focused on a single task.
 
 ### Safety
+- Before pushing, verify that the git `origin` remote is configured correctly (`git remote -v`). If the remote URL is missing or points to the wrong repository, fix it before pushing.
 - Do not open a merge request with failing checks unless the user explicitly accepts the risk.
 - Do not force-push or rewrite shared branch history.
 - Do not push to existing branches (e.g. `main`, `master`, `develop`). Always create a new feature branch (e.g. `issue/<number>-<slug>`).

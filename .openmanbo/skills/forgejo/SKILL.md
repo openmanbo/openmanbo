@@ -172,11 +172,12 @@ The base `forgejo` skill handles **discovery and routing**. Sub-skills handle **
    - `list_issue_comments` or `list_pull_request_reviews` for the full conversation thread.
 3. Understand what is being asked:
    - **A question** → research and reply with `create_comment`.
-   - **A request to take action** (e.g. "can you fix this?") → acknowledge with a comment, then load the appropriate sub-skill (`forgejo-coder` for implementation).
+   - **A request to take action** (e.g. "can you fix this?") → **first** acknowledge with a comment (e.g. "Got it, I'll take a look."), **then** load the appropriate sub-skill (`forgejo-coder` for implementation). Always reply before starting the actual work.
    - **A status check** (e.g. "any update?") → check memory for current task state and reply.
    - **An FYI / informational mention** → acknowledge briefly or skip if no response is needed.
-4. When replying, be concise and reference specific context (issue numbers, code lines, prior comments).
-5. If the mention requires implementation work, do not start coding in the reply — load the sub-skill and link back.
+4. **Always reply before acting**: for any mention that leads to further work (implementation, review, investigation), post an acknowledgement comment first via `create_comment`, then proceed with the task.
+5. When replying, be concise and reference specific context (issue numbers, code lines, prior comments).
+6. If the mention requires implementation work, do not start coding in the reply — load the sub-skill and link back.
 
 ---
 

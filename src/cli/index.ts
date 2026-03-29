@@ -236,7 +236,7 @@ program
   .option("--no-forgejo-poll", "Disable Forgejo notification polling")
   .action(async (opts) => {
     const agentScript = resolvePath(opts.agentScript);
-    const agentArgs: string[] = opts.agentArgs ?? ["discord"];
+    const agentArgs: string[] = opts.agentArgs ?? [];
     const adminPort = Number(opts.adminPort);
     const buildCommand = opts.buildCommand as string;
 

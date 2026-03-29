@@ -25,6 +25,14 @@
     "sequential-thinking": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "forgejo": {
+      "command": "node",
+      "args": ["${dataDir}/forgejo-mcp/dist/index.js"],
+      "env": {
+        "FORGEJO_URL": "https://forgejo.example.com",
+        "FORGEJO_TOKEN": "your-forgejo-token"
+      }
     }
   },
   "builtinTools": {
@@ -40,23 +48,10 @@
         "ANTHROPIC_API_KEY": "${env:ANTHROPIC_API_KEY}",
         "ANTHROPIC_MODEL": "${env:ANTHROPIC_MODEL}"
       },
-      "allowlist": [
-        {
-          "pattern": "date",
-          "description": "Get the current date and time."
-        },
-        {
-          "pattern": "which(?:\\s+[A-Za-z0-9._-]+)+",
-          "description": "Locate an executable in PATH."
-        },
-        {
-          "pattern": "(?:claude|[^\\s]*/claude)(?:\\s+(?:[A-Za-z0-9._:/=,@+-]+|\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'))*",
-          "description": "Run the Claude CLI with common arguments, including quoted values."
-        },
-        {
-          "pattern": "(?:obsidian|[^\\s]*/obsidian)(?:\\s+(?:[A-Za-z0-9._:/=,@+-]+|[A-Za-z0-9._:/,@+-]+=(?:[A-Za-z0-9._:/=,@+-]+|\"[^\"\\r\\n]*\"|'[^'\\r\\n]*')|\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'))*",
-          "description": "Run Obsidian CLI commands, including read/search with quoted arguments."
-        }
+      "mode": "blacklist",
+      "blacklist": [
+        { "pattern": "rm\\s+-rf\\s+/.*", "description": "Block recursive forced deletion from root" },
+        { "pattern": "(?:sudo|doas)\\s+.*", "description": "Block privilege escalation" }
       ]
     }
   }

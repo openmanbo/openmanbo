@@ -14,6 +14,7 @@ import { DiscordChannel } from "../channel/index.js";
 import { resolveDataDir, readIdentity, readMcpConfig, readSkills } from "../storage/index.js";
 import { McpManager } from "../mcp/index.js";
 import { LifecycleManager, Scheduler, AdminServer, type IpcMessage } from "../daemon/index.js";
+import { handleForgejoPoll, isForgejoProcessing } from "../trigger/index.js";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { resolve as resolvePath } from "node:path";
@@ -231,6 +232,8 @@ program
   .option("--agent-args <args...>", "Arguments forwarded to the agent process")
   .option("--admin-port <port>", "Port for the admin HTTP server", "7777")
   .option("--build-command <cmd>", "Build command for rebuild cycles", "npm run build")
+  .option("--forgejo-poll-interval <interval>", "Forgejo notification polling interval (e.g. 5m, 30s)", "5m")
+  .option("--no-forgejo-poll", "Disable Forgejo notification polling")
   .action(async (opts) => {
     const agentScript = resolvePath(opts.agentScript);
     const agentArgs: string[] = opts.agentArgs ?? ["discord"];
@@ -244,6 +247,16 @@ program
     });
 
     const scheduler = new Scheduler(lifecycle);
+
+    // Register Forgejo notification polling task
+    if (opts.forgejoPoll !== false) {
+      scheduler.addTask({
+        id: "forgejo-poll",
+        schedule: opts.forgejoPollInterval as string,
+        enabled: true,
+      });
+    }
+
     const admin = new AdminServer(lifecycle, scheduler);
 
     // Graceful shutdown
@@ -279,7 +292,20 @@ if (process.send) {
         console.error("[agent] Received build error from daemon:\n", msg.stderr);
         break;
       case "scheduled-task":
-        console.log(`[agent] Scheduled task "${msg.taskId}" triggered.`);
+        if (msg.taskId === "forgejo-poll") {
+          if (isForgejoProcessing()) break;
+          console.log(`[agent] Scheduled task "${msg.taskId}" triggered.`);
+          void (async () => {
+            try {
+              const cfg = loadConfig();
+              await handleForgejoPoll(cfg);
+            } catch (err) {
+              console.error("[agent] Forgejo poll error:", err);
+            }
+          })();
+        } else {
+          console.log(`[agent] Scheduled task "${msg.taskId}" triggered.`);
+        }
         break;
       default:
         break;

@@ -23,7 +23,7 @@ export interface McpHttpServerConfig {
 }
 
 /**
- * A single allowlist rule for the built-in exec tool.
+ * A single pattern rule for the built-in exec tool.
  * The pattern is treated as a full-string regular expression.
  */
 export interface BuiltinExecAllowlistRule {
@@ -32,6 +32,9 @@ export interface BuiltinExecAllowlistRule {
   /** Optional human-readable note describing when the rule should be used */
   description?: string;
 }
+
+/** Alias — blacklist rules share the same shape as allowlist rules. */
+export type BuiltinExecBlacklistRule = BuiltinExecAllowlistRule;
 
 /**
  * Configuration for OpenManbo's built-in shell execution tool.
@@ -55,8 +58,16 @@ export interface BuiltinExecToolConfig {
   maxOutputChars?: number;
   /** Max accepted command length before validation fails */
   maxCommandLength?: number;
-  /** Allowlist rules used to validate requested commands */
-  allowlist: BuiltinExecAllowlistRule[];
+  /**
+   * Validation mode for incoming commands.
+   * - `"allowlist"` (default): only commands matching an allowlist rule are permitted.
+   * - `"blacklist"`: all commands are permitted *unless* they match a blacklist rule.
+   */
+  mode?: "allowlist" | "blacklist";
+  /** Allowlist rules — required when mode is "allowlist" (default). */
+  allowlist?: BuiltinExecAllowlistRule[];
+  /** Blacklist rules — required when mode is "blacklist". */
+  blacklist?: BuiltinExecBlacklistRule[];
 }
 
 export interface BuiltinToolsConfig {

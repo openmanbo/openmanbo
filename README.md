@@ -28,6 +28,42 @@ pnpm dev interactive
 | `manbo discord` | Start the agent as a Discord bot |
 | `manbo daemon` | Start the background daemon (supervisor) for agent lifecycle management |
 
+### Daemon Admin API
+
+When `manbo daemon` is running, it exposes a localhost-only HTTP admin server on port `7777` by default. In addition to lifecycle controls, you can create and delete schedules dynamically.
+
+Create or update a schedule:
+
+```bash
+curl -X POST http://127.0.0.1:7777/api/schedules \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "id": "hourly-sync",
+    "schedule": "1h",
+    "enabled": true,
+    "payload": {"kind": "sync"}
+  }'
+```
+
+Delete a schedule:
+
+```bash
+curl -X DELETE http://127.0.0.1:7777/api/schedules/hourly-sync
+```
+
+Inspect current schedules via daemon status:
+
+```bash
+curl http://127.0.0.1:7777/api/status
+```
+
+Schedule payload fields:
+
+- `id`: unique task identifier
+- `schedule`: positive interval in milliseconds, or a shorthand string like `30s`, `5m`, `2h`
+- `enabled`: optional boolean, defaults to `true`
+- `payload`: optional JSON object forwarded to the agent when the task fires
+
 ### Global Options
 
 | Option | Env Variable | Description |
@@ -36,6 +72,17 @@ pnpm dev interactive
 | `--api-base-url <url>` | `OPENAI_API_BASE_URL` | Base URL (default: `https://api.openai.com/v1`) |
 | `--model <model>` | `OPENAI_MODEL` | Model name (default: `gpt-4o`) |
 | `--data-dir <path>` | `OPENMANBO_DATA_DIR` | Path to the `.openmanbo` storage directory (default: `.openmanbo` in cwd) |
+
+### Logging
+
+OpenManbo now emits timestamped runtime logs with a module scope, for example `daemon:lifecycle` or `channel:discord`.
+
+Use `OPENMANBO_LOG_LEVEL` to control verbosity:
+
+- `debug`: include detailed routing, MCP connection, and scheduler delivery logs
+- `info`: default level, includes lifecycle and operational events
+- `warn`: only warnings and errors
+- `error`: only errors
 
 ### Storage Directory (`.openmanbo`)
 
@@ -215,7 +262,14 @@ OpenManbo will automatically connect to all configured servers at startup, disco
 
 ### Built-in Exec Tool
 
-OpenManbo can also expose a built-in shell execution tool directly from `mcp.json`. Unlike external MCP servers, this tool runs inside the OpenManbo process and only accepts commands that match an explicit allowlist.
+OpenManbo can also expose a built-in shell execution tool directly from `mcp.json`. Unlike external MCP servers, this tool runs inside the OpenManbo process and validates commands against configurable rules before execution.
+
+The exec tool supports two validation modes:
+
+- **Allowlist mode** (default): only commands matching an allowlist rule are permitted.
+- **Blacklist mode**: all commands are permitted *unless* they match a blacklist rule.
+
+#### Allowlist mode (default)
 
 ```json
 {
@@ -246,6 +300,36 @@ OpenManbo can also expose a built-in shell execution tool directly from `mcp.jso
 }
 ```
 
+#### Blacklist mode
+
+In blacklist mode, any command is allowed unless it matches a blacklist rule. This is useful when you want broad shell access but need to block specific dangerous operations.
+
+```json
+{
+  "builtinTools": {
+    "exec": {
+      "enabled": true,
+      "name": "exec",
+      "description": "Run shell commands. Dangerous commands are blocked.",
+      "cwd": "${workspaceDir}",
+      "mode": "blacklist",
+      "timeoutMs": 15000,
+      "maxOutputChars": 8000,
+      "blacklist": [
+        {
+          "pattern": "rm\\s+-rf\\s+/.*",
+          "description": "Block recursive forced deletion from root"
+        },
+        {
+          "pattern": "(?:sudo|doas)\\s+.*",
+          "description": "Block privilege escalation"
+        }
+      ]
+    }
+  }
+}
+```
+
 The exec tool accepts a single argument:
 
 | Field | Description |
@@ -265,7 +349,9 @@ Built-in exec fields:
 | `timeoutMs` | Command timeout in milliseconds |
 | `maxOutputChars` | Max combined stdout/stderr characters returned to the model |
 | `maxCommandLength` | Max accepted command length before validation fails |
-| `allowlist` | Array of full-string regex rules used to approve commands |
+| `mode` | `"allowlist"` (default) or `"blacklist"` |
+| `allowlist` | Array of full-string regex rules used to approve commands (allowlist mode) |
+| `blacklist` | Array of full-string regex rules used to reject commands (blacklist mode) |
 
 Rules are matched against the entire command string. A rule such as `pnpm\\s+(?:build|test)` allows `pnpm build` and `pnpm test`, but rejects `pnpm install`.
 

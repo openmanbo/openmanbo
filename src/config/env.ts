@@ -13,6 +13,8 @@ export interface AppConfig {
   discordBotToken?: string;
   /** Path to the .openmanbo storage directory */
   dataDir?: string;
+  /** Forgejo notification polling interval (e.g. "5m", "30s", "2h") */
+  forgejoPollingInterval?: string;
 }
 
 /**
@@ -29,6 +31,8 @@ export function loadConfig(overrides?: Partial<AppConfig>): AppConfig {
   const discordBotToken =
     overrides?.discordBotToken ?? process.env.DISCORD_BOT_TOKEN;
   const dataDir = overrides?.dataDir ?? process.env.OPENMANBO_DATA_DIR;
+  const forgejoPollingInterval =
+    overrides?.forgejoPollingInterval ?? process.env.FORGEJO_POLL_INTERVAL;
 
   if (!apiKey) {
     throw new Error(
@@ -36,5 +40,5 @@ export function loadConfig(overrides?: Partial<AppConfig>): AppConfig {
     );
   }
 
-  return { apiKey, apiBaseUrl, model, discordBotToken, dataDir };
+  return { apiKey, apiBaseUrl, model, discordBotToken, dataDir, forgejoPollingInterval };
 }

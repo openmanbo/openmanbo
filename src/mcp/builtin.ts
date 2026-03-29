@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import type OpenAI from "openai";
 import type {
   BuiltinExecAllowlistRule,
+  BuiltinExecBlacklistRule,
   BuiltinExecToolConfig,
   McpConfig,
 } from "./types.js";
@@ -35,6 +36,8 @@ interface CompiledAllowlistRule {
   pattern: RegExp;
   description?: string;
 }
+
+type CompiledBlacklistRule = CompiledAllowlistRule;
 
 export class BuiltinToolManager {
   private readonly toolsByName = new Map<string, BuiltinTool>();
@@ -82,11 +85,18 @@ class BuiltinExecTool implements BuiltinTool {
   private readonly timeoutMs: number;
   private readonly maxOutputChars: number;
   private readonly maxCommandLength: number;
+  private readonly mode: "allowlist" | "blacklist";
   private readonly allowlist: CompiledAllowlistRule[];
+  private readonly blacklist: CompiledBlacklistRule[];
 
   constructor(config: BuiltinExecToolConfig) {
-    if (!config.allowlist.length) {
-      throw new Error("Built-in exec tool requires at least one allowlist rule.");
+    this.mode = config.mode ?? "allowlist";
+
+    if (this.mode === "allowlist" && (!config.allowlist || !config.allowlist.length)) {
+      throw new Error("Built-in exec tool requires at least one allowlist rule in allowlist mode.");
+    }
+    if (this.mode === "blacklist" && (!config.blacklist || !config.blacklist.length)) {
+      throw new Error("Built-in exec tool requires at least one blacklist rule in blacklist mode.");
     }
 
     this.name = config.name?.trim() || DEFAULT_EXEC_TOOL_NAME;
@@ -101,9 +111,10 @@ class BuiltinExecTool implements BuiltinTool {
       config.maxCommandLength,
       DEFAULT_MAX_COMMAND_LENGTH,
     );
-    this.allowlist = config.allowlist.flatMap((rule) => {
+
+    this.allowlist = (config.allowlist ?? []).flatMap((rule) => {
       try {
-        return [compileAllowlistRule(rule)];
+        return [compileRule(rule)];
       } catch (err) {
         console.warn(
           `[MCP] Skipping invalid exec allowlist rule "${rule.pattern}": ${String(err)}`,
@@ -112,8 +123,22 @@ class BuiltinExecTool implements BuiltinTool {
       }
     });
 
-    if (!this.allowlist.length) {
+    this.blacklist = (config.blacklist ?? []).flatMap((rule) => {
+      try {
+        return [compileRule(rule)];
+      } catch (err) {
+        console.warn(
+          `[MCP] Skipping invalid exec blacklist rule "${rule.pattern}": ${String(err)}`,
+        );
+        return [];
+      }
+    });
+
+    if (this.mode === "allowlist" && !this.allowlist.length) {
       throw new Error("Built-in exec tool has no valid allowlist rules.");
+    }
+    if (this.mode === "blacklist" && !this.blacklist.length) {
+      throw new Error("Built-in exec tool has no valid blacklist rules.");
     }
 
     this.env = buildSafeEnv(config.env);
@@ -121,14 +146,17 @@ class BuiltinExecTool implements BuiltinTool {
       type: "function",
       function: {
         name: this.name,
-        description: buildToolDescription(config.description, this.allowlist),
+        description: this.mode === "allowlist"
+          ? buildToolDescription(config.description, this.allowlist)
+          : (config.description?.trim() || "Execute shell commands. Some dangerous commands are blocked."),
         parameters: {
           type: "object",
           properties: {
             command: {
               type: "string",
-              description:
-                "Shell command to execute. It must match one of the configured allowlist rules.",
+              description: this.mode === "allowlist"
+                ? "Shell command to execute. It must match one of the configured allowlist rules."
+                : "Shell command to execute. Commands matching a blacklist rule will be rejected.",
             },
           },
           required: ["command"],
@@ -146,7 +174,9 @@ class BuiltinExecTool implements BuiltinTool {
 
     const command = validateCommand(
       rawCommand,
+      this.mode,
       this.allowlist,
+      this.blacklist,
       this.maxCommandLength,
     );
 
@@ -161,11 +191,11 @@ class BuiltinExecTool implements BuiltinTool {
   }
 }
 
-function compileAllowlistRule(
-  rule: BuiltinExecAllowlistRule,
+function compileRule(
+  rule: BuiltinExecAllowlistRule | BuiltinExecBlacklistRule,
 ): CompiledAllowlistRule {
   if (!rule.pattern.trim()) {
-    throw new Error("Allowlist pattern cannot be empty.");
+    throw new Error("Rule pattern cannot be empty.");
   }
 
   return {
@@ -216,7 +246,9 @@ function buildToolDescription(
 
 function validateCommand(
   input: string,
+  mode: "allowlist" | "blacklist",
   allowlist: CompiledAllowlistRule[],
+  blacklist: CompiledBlacklistRule[],
   maxCommandLength: number,
 ): string {
   const command = input.trim();
@@ -234,9 +266,16 @@ function validateCommand(
     throw new Error("Command must be a single line and cannot contain NUL bytes.");
   }
 
-  const matchesAllowlist = allowlist.some((rule) => rule.pattern.test(command));
-  if (!matchesAllowlist) {
-    throw new Error("Command is not in the allowlist.");
+  if (mode === "blacklist") {
+    const matchesBlacklist = blacklist.some((rule) => rule.pattern.test(command));
+    if (matchesBlacklist) {
+      throw new Error("Command is blocked by a blacklist rule.");
+    }
+  } else {
+    const matchesAllowlist = allowlist.some((rule) => rule.pattern.test(command));
+    if (!matchesAllowlist) {
+      throw new Error("Command is not in the allowlist.");
+    }
   }
 
   return command;

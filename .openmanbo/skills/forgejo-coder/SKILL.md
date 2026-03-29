@@ -65,20 +65,25 @@ This skill does **not** handle discovery, triage, or notification routing — th
 
 **Steps**:
 
-#### B.1 — Gather full issue context
+#### B.1 — Announce start
+
+- Post a comment on the issue via `create_comment` announcing that you are starting work. Keep it brief, e.g. "I'm picking this up now — will open a WIP PR shortly."
+- This lets watchers know the issue is being actively worked on.
+
+#### B.2 — Gather full issue context
 
 - `get_issue` for the full issue body.
 - `list_issue_comments` for the discussion thread.
 - Extract: task description, expected behavior, acceptance criteria, constraints, labels, dependencies, non-goals.
 - If ambiguous, prepare clarifying questions and post them via `create_comment` before proceeding.
 
-#### B.2 — Analyze the local repository
+#### B.3 — Analyze the local repository
 
 - Inspect relevant files, tests, scripts, and configuration in the local repository.
 - Identify the change surface, affected modules, risks, and validation approach.
 - Write a short implementation plan.
 
-#### B.3 — Implement
+#### B.4 — Implement
 
 Choose one:
 
@@ -90,13 +95,13 @@ In both cases:
 - Follow existing code style.
 - Do not modify unrelated files.
 
-#### B.4 — Validate
+#### B.5 — Validate
 
 - Run tests, linters, and project checks.
 - Confirm the implementation matches the issue acceptance criteria.
 - Review the diff for accidental churn, debug leftovers, or scope creep.
 
-#### B.5 — Commit & push
+#### B.6 — Commit & push
 
 - Create or switch to a branch: `issue/<number>-<short-slug>`.
 - Review `git status` and `git diff` before committing.
@@ -104,7 +109,7 @@ In both cases:
 - Ensure the commit contains only task-relevant changes.
 - Push the branch.
 
-#### B.6 — Open the merge request
+#### B.7 — Open the merge request
 
 - Call `create_pull_request` with:
   - `title`: **prefix with `WIP: `** while work is not yet complete, e.g. `WIP: fix: resolve #<number> — <short-summary>`
@@ -114,7 +119,7 @@ In both cases:
 - If the repository has assignees or labels to set, use `edit_pull_request` after creation.
 - The `WIP: ` prefix signals that the PR is not ready for final review or merge. Remove it only when all work is complete (see B.7).
 
-#### B.7 — Monitor & iterate
+#### B.8 — Monitor & iterate
 
 - After the MR is created, check for review feedback:
   - `list_pull_request_reviews` and `list_issue_comments` on the PR.

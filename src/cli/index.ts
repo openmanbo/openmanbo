@@ -280,12 +280,11 @@ program
     console.log("[daemon] Daemon is running. Press Ctrl+C to stop.");
   });
 
-program.parse();
+/* ── Agent-side IPC setup ──────────────────────────────────────────── */
 
-/* ── Agent-side IPC listener ──────────────────────────────────────── */
-// When the CLI is spawned as a child of the Daemon, set up a handler
-// for IPC messages and signal readiness.
-if (process.send) {
+function setupIpcListener(): void {
+  if (!process.send) return;
+
   process.on("message", (msg: IpcMessage) => {
     switch (msg.type) {
       case "build-error":
@@ -312,6 +311,14 @@ if (process.send) {
     }
   });
 
-  // Signal the Daemon that we are ready to receive IPC messages.
   process.send({ type: "agent-ready" });
+}
+
+// When spawned as a daemon child with no subcommand, skip commander
+// and run as a headless IPC worker.
+if (process.send && process.argv.length <= 2) {
+  setupIpcListener();
+} else {
+  program.parse();
+  setupIpcListener();
 }

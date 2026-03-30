@@ -261,6 +261,46 @@ For **full code review** (reading diffs, leaving line-level comments, approving/
 
 ---
 
+## Failure & Blocker Reporting
+
+When the agent encounters a blocker or cannot complete a task, it **must** report the failure on Forgejo so that humans and other agents have visibility. Silent failures are never acceptable.
+
+### When to Report
+
+- **Scenario A**: A notification cannot be processed (e.g. referenced issue/repo is inaccessible, MCP tool call fails).
+- **Scenario B**: No suitable work is found, or a selected task turns out to be blocked.
+- **Scenario C**: An @ mention cannot be addressed (e.g. missing context, unclear request after best-effort analysis).
+- **Any sub-skill**: The sub-skill (forgejo-coder, forgejo-reviewer, forgejo-pm) encounters an unrecoverable error.
+
+### How to Report
+
+Post a comment via `create_comment` on the **relevant issue or PR** with the following structure:
+
+```
+⚠️ **Blocked — unable to complete this task**
+
+**What I attempted:**
+- <step 1>
+- <step 2>
+
+**Blocking reason:**
+- <specific error, missing dependency, ambiguous requirement, access issue, etc.>
+
+**What is needed to unblock:**
+- <human action, clarification, access grant, upstream fix, etc.>
+```
+
+If the blocker is related to a **notification** that has no specific issue/PR to comment on, log the failure and move on to the next notification. Do not stop processing other notifications because of one failure.
+
+### Rules
+
+1. **Always be specific.** "Something went wrong" is not acceptable. Include error messages, tool names, and context.
+2. **Report before giving up.** The comment must be posted before the agent moves on or stops.
+3. **One comment per blocker.** Do not spam — consolidate related issues into a single comment.
+4. **Update memory.** Record the blocked status in task memory (see Task Memory section below) so future runs are aware.
+
+---
+
 ## Task Memory
 
 Use the **memory MCP** and/or **filesystem MCP** to persist task state so that context survives across conversations, restarts, and scheduled runs. The agent should never rely solely on conversational context to track what it has done.

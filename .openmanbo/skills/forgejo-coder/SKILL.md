@@ -144,6 +144,47 @@ These rules apply across all scenarios in this skill:
 
 ---
 
+## Failure & Blocker Reporting
+
+When implementation fails or is blocked at any point, the agent **must** report the failure on the relevant Forgejo issue or PR before stopping. Silent failures are never acceptable.
+
+### When to Report
+
+- **Build/test failures** that cannot be fixed after a reasonable attempt.
+- **Missing dependencies** (packages, APIs, upstream changes) that prevent implementation.
+- **Ambiguous requirements** that cannot be resolved by reading the issue, comments, and codebase.
+- **Access or permission errors** (e.g. cannot push, cannot read a required repo).
+- **Merge conflicts** that require human judgment to resolve.
+- **Any unrecoverable error** during the implementation workflow.
+
+### How to Report
+
+Post a comment via `create_comment` on the **issue being implemented** (or the PR if one was already opened) with:
+
+```
+⚠️ **Blocked — implementation could not be completed**
+
+**What I attempted:**
+- <brief summary of work done so far>
+
+**Blocking reason:**
+- <specific error message, failing test output, missing dependency name, etc.>
+
+**What is needed to unblock:**
+- <concrete next step: fix upstream dependency, clarify requirement X, grant access to Y, etc.>
+```
+
+If a **WIP PR** was already opened, update the PR body or post a comment there as well so reviewers see the blocker.
+
+### Rules
+
+1. **Be specific.** Include error messages, file paths, test names, and command output. Vague reports waste human time.
+2. **Report at the earliest opportunity.** Do not attempt the same failing operation repeatedly — report after a reasonable attempt.
+3. **Update task memory.** Record the blocked status so the agent does not re-attempt the same failing work in subsequent runs.
+4. **Do not close or abandon.** Leave the issue open and assigned. The blocker report is a request for help, not a surrender.
+
+---
+
 ## Guardrails
 
 ### Scope Control

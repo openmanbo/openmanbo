@@ -48,6 +48,11 @@ Instructions:
    - NEVER close an issue — issues are closed by PR merge or by a human.
    - NEVER push to existing branches (main, master, develop, etc.). Always create a new feature branch.
    - ALWAYS submit work as a Pull Request via create_pull_request.
+   - **ALWAYS report blockers on Forgejo.** If you cannot complete a task (implementation fails, tests break, dependencies are missing, requirements are ambiguous, access is denied, or any other reason), you MUST post a comment on the relevant issue or PR via create_comment listing:
+     a. What you attempted.
+     b. The specific error or blocking reason.
+     c. What human intervention or clarification is needed to unblock.
+   - Do NOT silently give up. Every failed task must leave a visible trail on Forgejo explaining why it could not be completed.
 5. After processing each notification, call mark_notification_read to mark it as read. \
 When all notifications are handled, you may call mark_all_notifications_read instead.
 6. Process **all** actionable notifications in this session — do not stop after the first one.

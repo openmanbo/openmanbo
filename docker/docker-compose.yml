@@ -1,0 +1,27 @@
+# docker compose -f docker/docker-compose.yml up --build
+# Each agent has its own .env file (see .env.example in the project root)
+
+services:
+  forgejo-doro:
+    build:
+      context: ..
+      dockerfile: docker/forgejo-doro/Dockerfile
+    container_name: openmanbo-doro
+    restart: unless-stopped
+    env_file: forgejo-doro/.env
+    volumes:
+      - doro-workspace:/workspace
+
+  forgejo-manbo:
+    build:
+      context: ..
+      dockerfile: docker/forgejo-manbo/Dockerfile
+    container_name: openmanbo-manbo
+    restart: unless-stopped
+    env_file: forgejo-manbo/.env
+    volumes:
+      - manbo-workspace:/workspace
+
+volumes:
+  doro-workspace:
+  manbo-workspace:

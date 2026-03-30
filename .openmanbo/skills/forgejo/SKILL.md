@@ -1,6 +1,6 @@
 ---
 name: forgejo
-description: "Use when interacting with Forgejo in any way: triaging notifications, discovering new issues, responding to @ mentions, checking PR status, exploring repositories, or performing any Git-forge workflow on Forgejo. This is the base skill — load specialized sub-skills (forgejo-coder, forgejo-reviewer) when the task requires implementation or code review."
+description: "Use when interacting with Forgejo in any way: triaging notifications, discovering new issues, responding to @ mentions, checking PR status, exploring repositories, or performing any Git-forge workflow on Forgejo. This is the base skill — load specialized sub-skills (forgejo-coder, forgejo-reviewer, forgejo-pm) when the task requires implementation, code review, or issue decomposition."
 ---
 
 # Forgejo Skill
@@ -11,6 +11,7 @@ This skill gives the agent full situational awareness of Forgejo-hosted projects
 
 For **implementation** (coding, committing, opening PRs, addressing review feedback), load the `forgejo-coder` sub-skill.
 For **code review** (reading diffs, leaving structured reviews, approving/requesting changes), load the `forgejo-reviewer` sub-skill.
+For **issue decomposition & delegation** (breaking complex issues into sub-tasks, assigning to agents, tracking progress), load the `forgejo-pm` sub-skill.
 
 Typical entry points:
 
@@ -133,6 +134,9 @@ START
  ├─ User asks to review a PR / PR review requested
  │   └─► Load sub-skill: forgejo-reviewer
  │
+ ├─ A complex issue needs decomposition / delegation to multiple agents
+ │   └─► Load sub-skill: forgejo-pm
+ │
  ├─ User asks to merge a PR that is already approved
  │   └─► Scenario D: Merge PRs
  │
@@ -154,6 +158,8 @@ When a scenario requires specialized work, load the appropriate sub-skill via `l
 | PR has review comments requesting code changes | `forgejo-coder` | When triage or notification identifies change requests on the agent's PR |
 | PR needs code review | `forgejo-reviewer` | When triage identifies a review request, user asks to review a PR, or Scenario C routes a review mention |
 | PR author has addressed review feedback | `forgejo-reviewer` | When notification indicates new commits on a previously reviewed PR |
+| Complex issue needing decomposition | `forgejo-pm` | When an issue is too large or complex for a single agent to implement directly |
+| Agent reports sub-issue completion via @ mention | `forgejo-pm` | When notification indicates an agent completed a delegated sub-task |
 
 The base `forgejo` skill handles **discovery and routing**. Sub-skills handle **execution**.
 
@@ -173,6 +179,7 @@ The base `forgejo` skill handles **discovery and routing**. Sub-skills handle **
    - **Issue assignment** → note for Scenario B or sub-skill routing.
    - **@ mention in issue/PR** → note for Scenario C.
    - **Review request or review comment** → note for sub-skill routing (forgejo-reviewer for reviewing, forgejo-coder if the agent's own PR received feedback).
+   - **Sub-issue completion report** (agent @ mention on a sub-issue with `[Part of #N]` in title) → note for sub-skill routing (forgejo-pm for progress tracking).
    - **PR merged / issue closed** → informational, summarize only.
 4. For each actionable notification, fetch context with `get_issue` or `get_pull_request` as appropriate.
 5. Prioritize actionable items:
@@ -197,7 +204,6 @@ The base `forgejo` skill handles **discovery and routing**. Sub-skills handle **
 3. If no assigned issues, search for **available unassigned work**:
    - `search_issues` with relevant labels (e.g. `help wanted`, `good first issue`) or by repo.
    - Filter out issues that are blocked, in-progress by others, or lack clear acceptance criteria.
-   - **Skip any issue that already has assignees** — if `assignees` is non-empty and does not include the agent's own username, the issue belongs to someone else. Do not claim it, comment on it, or start work on it.
 4. Rank candidates by:
    - Clarity of acceptance criteria.
    - Recent activity and urgency signals (labels, milestones).
@@ -222,16 +228,14 @@ The base `forgejo` skill handles **discovery and routing**. Sub-skills handle **
 2. Fetch full context:
    - `get_issue` or `get_pull_request` for the parent item.
    - `list_issue_comments` or `list_pull_request_reviews` for the full conversation thread.
-3. **Check assignees first**: Before deciding how to respond, inspect the issue/PR's `assignees` field.
-   - If the issue is **assigned to someone else** (i.e. `assignees` is non-empty and does not include the agent's own username), **do not take action on the issue**. The agent may answer a direct question or provide information, but must **not** self-assign, start implementation, or post a comment claiming ownership. If asked to fix or implement something on an issue assigned to someone else, politely decline and explain that the issue is already assigned.
-4. Understand what is being asked:
+3. Understand what is being asked:
    - **A question** → research and reply with `create_comment`.
-   - **A request to take action** (e.g. "can you fix this?") → **first** check assignees (see above). If unassigned or assigned to the agent, acknowledge with a comment (e.g. "Got it, I'll take a look."), **then** load the appropriate sub-skill (`forgejo-coder` for implementation). Always reply before starting the actual work.
+   - **A request to take action** (e.g. "can you fix this?") → **first** acknowledge with a comment (e.g. "Got it, I'll take a look."), **then** load the appropriate sub-skill (`forgejo-coder` for implementation). Always reply before starting the actual work.
    - **A status check** (e.g. "any update?") → check memory for current task state and reply.
    - **An FYI / informational mention** → acknowledge briefly or skip if no response is needed.
-5. **Always reply before acting**: for any mention that leads to further work (implementation, review, investigation), post an acknowledgement comment first via `create_comment`, then proceed with the task.
-6. When replying, be concise and reference specific context (issue numbers, code lines, prior comments).
-7. If the mention requires implementation work, do not start coding in the reply — load the sub-skill and link back.
+4. **Always reply before acting**: for any mention that leads to further work (implementation, review, investigation), post an acknowledgement comment first via `create_comment`, then proceed with the task.
+5. When replying, be concise and reference specific context (issue numbers, code lines, prior comments).
+6. If the mention requires implementation work, do not start coding in the reply — load the sub-skill and link back.
 
 ---
 
@@ -303,12 +307,6 @@ Record structured facts at each major workflow checkpoint:
 - Do not perform write actions (assign, comment, create PR, merge) on repositories without confirmed write access.
 - Do not self-assign issues in repositories the agent does not contribute to unless the user explicitly requests it.
 
-### Respecting Assignments
-- **Never work on an issue that is already assigned to someone else.** Before taking action on any issue, check the `assignees` field. If it contains users other than the agent itself, treat the issue as owned by those assignees.
-- When discovering work (Scenario B), always skip issues with existing assignees.
-- When responding to @ mentions (Scenario C) on an issue assigned to someone else, the agent may answer questions or provide information but must **not** self-assign, start implementation, or claim the task.
-- If the user explicitly asks the agent to work on an issue assigned to someone else, inform the user that the issue is already assigned and ask for confirmation before proceeding.
-
 ### Safety
 - **Never auto-merge** a PR without explicit user approval.
 - Do not merge a PR whose title still starts with `WIP: `.
@@ -322,4 +320,5 @@ Record structured facts at each major workflow checkpoint:
 
 ### Sub-Skill Delegation
 - Do not attempt implementation work (coding, committing, opening PRs) within this base skill. Load the appropriate sub-skill instead.
+- Do not attempt issue decomposition or agent delegation within this base skill. Load `forgejo-pm` instead.
 - Always pass gathered context (issue details, notification classification, memory state) to the sub-skill so it does not repeat discovery work.

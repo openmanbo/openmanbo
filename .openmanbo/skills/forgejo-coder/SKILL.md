@@ -126,6 +126,7 @@ In both cases:
 - If changes are requested, route to **Scenario A** (Handle PR Change Requests).
 - When all implementation and review feedback are addressed and validation passes, **remove the `WIP: ` prefix** from the PR title via `edit_pull_request`.
 - After removing the `WIP: ` prefix, **@ mention the reviewer(s)** via `create_comment` to signal the PR is ready for final review or merge. Example: `@reviewer-username WIP removed — this PR is ready for final review.`
+- **If this issue is a sub-issue** (title contains `[Part of #N]` or body references a parent issue): after the PR is merged or the issue is otherwise completed, **@ mention the issue creator** (the PM agent who created and assigned this sub-issue) on this issue to report completion. Example: `@pm-bot Sub-issue #43 is complete — PR #18 merged.`
 - The task is done only when the PR is approved or merged.
 - **Update memory** at each state change: PR opened → review received → changes pushed → WIP removed → merged/closed.
 
@@ -139,6 +140,7 @@ These rules apply across all scenarios in this skill:
 2. **After removing WIP prefix** (Scenario B step B.8): @ mention the reviewer(s) to signal readiness for final review.
 3. **Never assume** who the reviewer is — always check `list_pull_request_reviews` for the actual reviewer usernames.
 4. **Format**: Use `@username` at the start of a `create_comment` on the PR, with a brief summary of what action is needed.
+5. **After completing a sub-issue** (Scenario B step B.8): If the issue title contains `[Part of #N]` or the body references a parent issue, @ mention the **issue creator** (the PM agent who created and assigned this sub-issue) on this issue to report completion. Get the creator username from `get_issue` → `user` field.
 
 ---
 

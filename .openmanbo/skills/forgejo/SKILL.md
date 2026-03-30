@@ -112,154 +112,17 @@ Always be aware of the full tool set. Choose the right tool for the situation.
 
 ---
 
-## Decision Routing
+## Conventions
 
-When activated, determine which scenario to follow based on the trigger:
+Instead of a rigid step-by-step workflow, follow these core conventions when operating on Forgejo Tasks:
 
-```
-START
- │
- ├─ User asks to check notifications / "what's new?"
- │   └─► Scenario A: Triage Notifications
- │
- ├─ User asks to find work / "pick a task" / scheduled poll
- │   └─► Scenario B: Discover & Claim Work
- │
- ├─ Notification or user mentions an @ mention to respond to
- │   └─► Scenario C: Respond to @ Mentions
- │
- ├─ A specific issue needs implementation / PR change requests
- │   └─► Load sub-skill: forgejo-coder
- │
- ├─ User asks to review a PR / PR review requested
- │   └─► Load sub-skill: forgejo-reviewer
- │
- ├─ A complex issue needs decomposition / delegation to multiple agents
- │   └─► Load sub-skill: forgejo-pm
- │
- ├─ User asks to merge a PR that is already approved
- │   └─► Scenario D: Merge PRs
- │
- └─ Ambiguous — start with Scenario A to get situational awareness,
-     then route from there
-```
-
-If the trigger is unclear, **always start with Scenario A** (triage notifications) to build situational awareness before taking action.
-
-**Before entering any scenario**, read memory first to check for in-progress tasks. Resume unfinished work before starting something new.
-
-### Sub-Skill Routing
-
-When a scenario requires specialized work, load the appropriate sub-skill via `load-skill`:
-
-| Trigger | Sub-Skill | When to load |
-|---|---|---|
-| Issue selected for implementation | `forgejo-coder` | After Scenario B selects a task, or when Scenario C identifies an action request |
-| PR has review comments requesting code changes | `forgejo-coder` | When triage or notification identifies change requests on the agent's PR |
-| PR needs code review | `forgejo-reviewer` | When triage identifies a review request, user asks to review a PR, or Scenario C routes a review mention |
-| PR author has addressed review feedback | `forgejo-reviewer` | When notification indicates new commits on a previously reviewed PR |
-| Complex issue needing decomposition | `forgejo-pm` | When an issue is too large or complex for a single agent to implement directly |
-| Agent reports sub-issue completion via @ mention | `forgejo-pm` | When notification indicates an agent completed a delegated sub-task |
-
-The base `forgejo` skill handles **discovery and routing**. Sub-skills handle **execution**.
-
----
-
-## Scenarios
-
-### Scenario A: Triage Notifications
-
-**When**: The agent needs to understand what requires attention on Forgejo.
-
-**Steps**:
-
-1. Call `get_user` to confirm the authenticated identity.
-2. Call `list_notifications` to fetch unread notifications.
-3. Classify each notification:
-   - **Issue assignment** → note for Scenario B or sub-skill routing.
-   - **@ mention in issue/PR** → note for Scenario C.
-   - **Review request or review comment** → note for sub-skill routing (forgejo-reviewer for reviewing, forgejo-coder if the agent's own PR received feedback).
-   - **Sub-issue completion report** (agent @ mention on a sub-issue with `[Part of #N]` in title) → note for sub-skill routing (forgejo-pm for progress tracking).
-   - **PR merged / issue closed** → informational, summarize only.
-4. For each actionable notification, fetch context with `get_issue` or `get_pull_request` as appropriate.
-5. Prioritize actionable items:
-   - Items requiring a response (mentions, review requests) first.
-   - Items requiring implementation (assigned issues) second.
-   - Informational items last.
-6. **If running in autonomous mode** (e.g. triggered by the notification poller): auto-route directly to the appropriate scenario / sub-skill for each actionable item. Do not wait for user input — process all items.
-7. **If a user is present in the conversation**: present a prioritized summary and ask which item to handle, or auto-route if the user gave blanket permission to proceed.
-
----
-
-### Scenario B: Discover & Claim Work
-
-**When**: The agent is looking for the next task to pick up — either assigned work or unassigned work that fits.
-
-**Steps**:
-
-1. Call `get_user` to confirm identity.
-2. Search for **assigned open issues**:
-   - `search_issues` with `assigned: true`, `state: "open"`, `type: "issues"`.
-   - If a specific repo is known, narrow with `owner` + `list_issues`.
-3. If no assigned issues, search for **available unassigned work**:
-   - `search_issues` with relevant labels (e.g. `help wanted`, `good first issue`) or by repo.
-   - Filter out issues that are blocked, in-progress by others, or lack clear acceptance criteria.
-4. Rank candidates by:
-   - Clarity of acceptance criteria.
-   - Recent activity and urgency signals (labels, milestones).
-   - Alignment with the current repository context.
-   - Absence of unresolved blockers.
-5. Present the ranked list to the user with a recommended pick.
-6. Once a task is selected:
-   - If the issue is unassigned, self-assign via `edit_issue` (set `assignees`).
-   - Post a status comment via `create_comment` announcing work has started.
-   - **Record in memory**: issue number, title, repo, and timestamp (see Task Memory).
-   - **Load `forgejo-coder`** sub-skill for implementation.
-
----
-
-### Scenario C: Respond to @ Mentions
-
-**When**: The agent is mentioned in an issue or PR comment and needs to respond.
-
-**Steps**:
-
-1. Identify the source — from `list_notifications` or a direct user instruction.
-2. Fetch full context:
-   - `get_issue` or `get_pull_request` for the parent item.
-   - `list_issue_comments` or `list_pull_request_reviews` for the full conversation thread.
-3. Understand what is being asked:
-   - **A question** → research and reply with `create_comment`.
-   - **A request to take action** (e.g. "can you fix this?") → **first** acknowledge with a comment (e.g. "Got it, I'll take a look."), **then** load the appropriate sub-skill (`forgejo-coder` for implementation). Always reply before starting the actual work.
-   - **A status check** (e.g. "any update?") → check memory for current task state and reply.
-   - **An FYI / informational mention** → acknowledge briefly or skip if no response is needed.
-4. **Always reply before acting**: for any mention that leads to further work (implementation, review, investigation), post an acknowledgement comment first via `create_comment`, then proceed with the task.
-5. When replying, be concise and reference specific context (issue numbers, code lines, prior comments).
-6. If the mention requires implementation work, do not start coding in the reply — load the sub-skill and link back.
-
----
-
-### Scenario D: Merge PRs
-
-**When**: The agent is asked to merge a PR that is already approved, or to perform a simple merge check.
-
-For **full code review** (reading diffs, leaving line-level comments, approving/requesting changes), load the `forgejo-reviewer` sub-skill instead.
-
-**Steps**:
-
-1. Fetch PR context:
-   - `get_pull_request` for metadata.
-   - `list_pull_request_reviews` for existing reviews.
-2. Confirm merge readiness:
-   - The PR has at least one APPROVED review.
-   - The PR title does **not** start with `WIP: `.
-   - The PR state is `open`.
-3. If the branch is behind base, use `update_pull_request_branch` before merging.
-4. Call `merge_pull_request` with the appropriate method (`Do`: `merge`, `rebase`, or `squash` — follow project convention).
-   - Optionally set `delete_branch_after_merge: true` for cleanup.
-5. Requires **explicit user approval** before executing the merge.
-
----
+1. **Language Matching**: Always reply in the same language as the person you are communicating with. If an issue or comment is written in Chinese, reply in Chinese. If in English, reply in English.
+2. **Self-Assignment**: When picking up an unassigned issue to work on, you MUST self-assign it via `edit_issue` (`assignees`) before starting work.
+3. **Truth over Memory**: Rely on Forgejo API data (like `get_issue`, `search_issues`, `list_notifications`) rather than internal memory.
+4. **Sub-skill Handoff**: 
+   - Use `forgejo-coder` for implementation tasks.
+   - Use `forgejo-reviewer` for code review tasks.
+   - Use `forgejo-pm` for breaking down complex issues.
 
 ## Failure & Blocker Reporting
 
@@ -267,9 +130,9 @@ When the agent encounters a blocker or cannot complete a task, it **must** repor
 
 ### When to Report
 
-- **Scenario A**: A notification cannot be processed (e.g. referenced issue/repo is inaccessible, MCP tool call fails).
-- **Scenario B**: No suitable work is found, or a selected task turns out to be blocked.
-- **Scenario C**: An @ mention cannot be addressed (e.g. missing context, unclear request after best-effort analysis).
+- **Notifications**: A notification cannot be processed (e.g. referenced issue/repo is inaccessible, MCP tool call fails).
+- **Discovery**: No suitable work is found, or a selected task turns out to be blocked.
+- **Mentions**: An @ mention cannot be addressed (e.g. missing context, unclear request after best-effort analysis).
 - **Any sub-skill**: The sub-skill (forgejo-coder, forgejo-reviewer, forgejo-pm) encounters an unrecoverable error.
 
 ### How to Report

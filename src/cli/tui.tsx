@@ -225,6 +225,7 @@ function TuiApp(props: TuiAppProps): JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (!process.stdout.isTTY || !process.stdin.isTTY) return;
     process.stdout.write("\u001b[?1049h\u001b[?1000h\u001b[?1002h\u001b[?1006h\u001b[?25l");
     return () => {
       process.stdout.write("\u001b[?25h\u001b[?1006l\u001b[?1002l\u001b[?1000l\u001b[?1049l");
@@ -247,6 +248,7 @@ function TuiApp(props: TuiAppProps): JSX.Element {
   const [inputInstanceKey, setInputInstanceKey] = useState(0);
   const [lastPrompt, setLastPrompt] = useState("");
   const [isRunning, setIsRunning] = useState(false);
+  const isRunningRef = useRef(false);
   const [completionIndex, setCompletionIndex] = useState(0);
   const [scrollOffsetLines, setScrollOffsetLines] = useState(0);
 
@@ -397,126 +399,131 @@ function TuiApp(props: TuiAppProps): JSX.Element {
   const runUserMessage = useCallback(
     async (rawInput: string) => {
       const userInput = rawInput.trim();
-      if (!userInput || isRunning) return;
+      if (!userInput || isRunningRef.current) return;
 
-      if (userInput === "/exit") {
-        await handleExit();
-        return;
-      }
-
-      if (userInput === "/reset") {
-        agent.reset();
-        appendMessage("system", "Conversation reset.");
-        setScrollOffsetLines(0);
-        return;
-      }
-
-      if (userInput === "/help") {
-        appendMessage(
-          "hint",
-          [
-            "Shortcuts:",
-            "- Enter: send",
-            "- Ctrl+R: reset conversation",
-            "- Ctrl+L: clear screen",
-            "- Mouse wheel / PgUp / PgDn: scroll history",
-            "- Tab: apply current command completion",
-            "- Up/Down: select completion",
-            "- /exit: quit",
-          ].join("\n"),
-        );
-        return;
-      }
-
+      isRunningRef.current = true;
       setIsRunning(true);
-      appendMessage("user", userInput);
-      setLastPrompt(userInput);
-      setScrollOffsetLines(0);
-
-      const routeResult = routeSkills({ message: userInput, skills });
-
-      if (routeResult.usageHint && !routeResult.content) {
-        appendMessage("hint", routeResult.usageHint);
-        setIsRunning(false);
-        return;
-      }
 
       try {
-        let assistantId: number | undefined;
-        let streamedChunkCount = 0;
+        if (userInput === "/exit") {
+          await handleExit();
+          return;
+        }
 
-        const startNewAssistantSegment = () => {
-          assistantId = undefined;
-        };
+        if (userInput === "/reset") {
+          agent.reset();
+          appendMessage("system", "Conversation reset.");
+          setScrollOffsetLines(0);
+          return;
+        }
 
-        const flushBatch = (msgId: number) => {
-          const buffered = batchBufferRef.current.get(msgId);
-          if (buffered && buffered.length > 0) {
-            updateMessage(msgId, (current) => current + buffered);
-            batchBufferRef.current.delete(msgId);
-          }
-        };
+        if (userInput === "/help") {
+          appendMessage(
+            "hint",
+            [
+              "Shortcuts:",
+              "- Enter: send",
+              "- Ctrl+R: reset conversation",
+              "- Ctrl+L: clear screen",
+              "- Mouse wheel / PgUp / PgDn: scroll history",
+              "- Tab: apply current command completion",
+              "- Up/Down: select completion",
+              "- /exit: quit",
+            ].join("\n"),
+          );
+          return;
+        }
 
-        agent.setEventHandlers({
-          onToolCallStart: (payload) => {
-            startNewAssistantSegment();
-            appendMessage("tool", `Tool calling: ${payload.name} args=${summarizeValue(payload.args)}`);
-          },
-          onToolCallSuccess: (payload) => {
-            startNewAssistantSegment();
-            appendMessage("tool", `Tool done: ${payload.name} result=${summarizeText(payload.result)}`);
-          },
-          onToolCallError: (payload) => {
-            startNewAssistantSegment();
-            appendMessage("tool", `Tool error: ${payload.name} error=${summarizeText(payload.error)}`);
-          },
-        });
+        appendMessage("user", userInput);
+        setLastPrompt(userInput);
+        setScrollOffsetLines(0);
 
-        for await (const chunk of agent.chat(routeResult.content || userInput, undefined, {
-          turnMessages: buildSkillRouteMessages(routeResult.activeSkills),
-        })) {
-          streamedChunkCount += 1;
-          if (assistantId === undefined) {
-            assistantId = appendMessage("assistant", chunk);
-            continue;
-          }
+        const routeResult = routeSkills({ message: userInput, skills });
 
-          const currentBuffer = batchBufferRef.current.get(assistantId) || "";
-          const newBuffer = currentBuffer + chunk;
-          batchBufferRef.current.set(assistantId, newBuffer);
+        if (routeResult.usageHint && !routeResult.content) {
+          appendMessage("hint", routeResult.usageHint);
+          return;
+        }
 
-          if (newBuffer.length >= BATCH_CHAR_THRESHOLD) {
-            flushBatch(assistantId);
-            if (batchTimerRef.current) clearTimeout(batchTimerRef.current);
-            batchTimerRef.current = null;
-          } else if (!batchTimerRef.current) {
-            batchTimerRef.current = setTimeout(() => {
-              flushBatch(assistantId!);
+        try {
+          let assistantId: number | undefined;
+          let streamedChunkCount = 0;
+
+          const startNewAssistantSegment = () => {
+            assistantId = undefined;
+          };
+
+          const flushBatch = (msgId: number) => {
+            const buffered = batchBufferRef.current.get(msgId);
+            if (buffered && buffered.length > 0) {
+              updateMessage(msgId, (current) => current + buffered);
+              batchBufferRef.current.delete(msgId);
+            }
+          };
+
+          agent.setEventHandlers({
+            onToolCallStart: (payload) => {
+              startNewAssistantSegment();
+              appendMessage("tool", `Tool calling: ${payload.name} args=${summarizeValue(payload.args)}`);
+            },
+            onToolCallSuccess: (payload) => {
+              startNewAssistantSegment();
+              appendMessage("tool", `Tool done: ${payload.name} result=${summarizeText(payload.result)}`);
+            },
+            onToolCallError: (payload) => {
+              startNewAssistantSegment();
+              appendMessage("tool", `Tool error: ${payload.name} error=${summarizeText(payload.error)}`);
+            },
+          });
+
+          for await (const chunk of agent.chat(routeResult.content || userInput, undefined, {
+            turnMessages: buildSkillRouteMessages(routeResult.activeSkills),
+          })) {
+            streamedChunkCount += 1;
+            if (assistantId === undefined) {
+              assistantId = appendMessage("assistant", chunk);
+              continue;
+            }
+
+            const currentBuffer = batchBufferRef.current.get(assistantId) || "";
+            const newBuffer = currentBuffer + chunk;
+            batchBufferRef.current.set(assistantId, newBuffer);
+
+            if (newBuffer.length >= BATCH_CHAR_THRESHOLD) {
+              flushBatch(assistantId);
+              if (batchTimerRef.current) clearTimeout(batchTimerRef.current);
               batchTimerRef.current = null;
-            }, BATCH_TIME_THRESHOLD_MS);
+            } else if (!batchTimerRef.current) {
+              batchTimerRef.current = setTimeout(() => {
+                flushBatch(assistantId!);
+                batchTimerRef.current = null;
+              }, BATCH_TIME_THRESHOLD_MS);
+            }
           }
-        }
 
-        if (assistantId !== undefined) {
-          flushBatch(assistantId);
-        }
+          if (assistantId !== undefined) {
+            flushBatch(assistantId);
+          }
 
-        if (batchTimerRef.current) {
-          clearTimeout(batchTimerRef.current);
-          batchTimerRef.current = null;
-        }
+          if (batchTimerRef.current) {
+            clearTimeout(batchTimerRef.current);
+            batchTimerRef.current = null;
+          }
 
-        if (assistantId === undefined && streamedChunkCount === 0) {
-          appendMessage("assistant", "(no response)");
+          if (assistantId === undefined && streamedChunkCount === 0) {
+            appendMessage("assistant", "(no response)");
+          }
+        } catch (error) {
+          appendMessage("error", `Request failed: ${String(error)}`);
+        } finally {
+          agent.setEventHandlers(undefined);
         }
-      } catch (error) {
-        appendMessage("error", `Request failed: ${String(error)}`);
       } finally {
-        agent.setEventHandlers(undefined);
+        isRunningRef.current = false;
         setIsRunning(false);
       }
     },
-    [agent, appendMessage, handleExit, isRunning, skills, updateMessage],
+    [agent, appendMessage, handleExit, skills, updateMessage],
   );
 
   useInput((input, key) => {
@@ -534,6 +541,13 @@ function TuiApp(props: TuiAppProps): JSX.Element {
         },
       ]);
       setInputValue("");
+      setScrollOffsetLines(0);
+      return;
+    }
+
+    if (key.ctrl && input === "r") {
+      agent.reset();
+      appendMessage("system", "Conversation reset.");
       setScrollOffsetLines(0);
       return;
     }

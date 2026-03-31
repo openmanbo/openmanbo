@@ -121,6 +121,14 @@ export class McpManager {
   }
 
   /**
+   * Configure the built-in Q&A tool with an LLM client for sub-agent calls.
+   * Must be called after connect() and before any tool execution involving Q&A.
+   */
+  configureQna(client: OpenAI, model: string): void {
+    this.builtinTools.configureQna(client, model);
+  }
+
+  /**
    * Returns all tools from all connected MCP servers as OpenAI tool definitions.
    */
   get tools(): OpenAI.ChatCompletionTool[] {

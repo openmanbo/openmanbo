@@ -70,8 +70,37 @@ export interface BuiltinExecToolConfig {
   blacklist?: BuiltinExecBlacklistRule[];
 }
 
+/**
+ * A single Q&A topic that the built-in `ask` tool can answer.
+ */
+export interface QnaTopic {
+  /** Topic name used to match the user's query (e.g. "forgejo") */
+  name: string;
+  /** Short human-readable description shown in the tool definition */
+  description?: string;
+  /** Full instruction content loaded from the instruction file */
+  content: string;
+  /** Source path relative to the data directory (e.g. "qna/forgejo/INSTRUCTION.md") */
+  source: string;
+}
+
+/**
+ * Configuration for the built-in Q&A tool.
+ */
+export interface BuiltinQnaToolConfig {
+  /** Whether the tool is enabled (defaults to true when topics exist) */
+  enabled?: boolean;
+  /** Tool name exposed to the model (defaults to "ask") */
+  name?: string;
+  /** Tool description exposed to the model */
+  description?: string;
+  /** Q&A topics loaded from the qna/ directory */
+  topics: QnaTopic[];
+}
+
 export interface BuiltinToolsConfig {
   exec?: BuiltinExecToolConfig;
+  qna?: BuiltinQnaToolConfig;
 }
 
 /**

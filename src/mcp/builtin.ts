@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type OpenAI from "openai";
+import { BuiltinQnaTool } from "./qna.js";
 import type {
   BuiltinExecAllowlistRule,
   BuiltinExecBlacklistRule,
@@ -41,14 +42,29 @@ type CompiledBlacklistRule = CompiledAllowlistRule;
 
 export class BuiltinToolManager {
   private readonly toolsByName = new Map<string, BuiltinTool>();
+  private qnaTool: BuiltinQnaTool | undefined;
 
   constructor(config?: McpConfig["builtinTools"]) {
-    if (!config?.exec || config.exec.enabled === false) {
-      return;
+    if (config?.exec && config.exec.enabled !== false) {
+      const execTool = new BuiltinExecTool(config.exec);
+      this.toolsByName.set(execTool.name, execTool);
     }
 
-    const execTool = new BuiltinExecTool(config.exec);
-    this.toolsByName.set(execTool.name, execTool);
+    if (config?.qna && config.qna.enabled !== false && config.qna.topics.length > 0) {
+      const qnaTool = new BuiltinQnaTool(config.qna);
+      this.qnaTool = qnaTool;
+      this.toolsByName.set(qnaTool.name, qnaTool);
+    }
+  }
+
+  /**
+   * Configure the Q&A tool with an LLM client for sub-agent calls.
+   * Must be called after construction and before tool execution.
+   */
+  configureQna(client: OpenAI, model: string): void {
+    if (this.qnaTool) {
+      this.qnaTool.configure(client, model);
+    }
   }
 
   get tools(): OpenAI.ChatCompletionTool[] {

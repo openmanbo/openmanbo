@@ -12,6 +12,8 @@ import {
   readIdentity,
   readMcpConfig,
   readSkills,
+  readQnaTopics,
+  injectQnaTopics,
 } from "../storage/index.js";
 import { createLogger } from "../logger.js";
 
@@ -79,14 +81,22 @@ export async function handleForgejoPoll(config: AppConfig): Promise<void> {
   try {
     // ── Layer 1: lightweight notification check ────────────────────
     const dataDir = resolveDataDir(config.dataDir);
-    const mcpConfig = await readMcpConfig(dataDir);
+    const [mcpConfig, qnaTopics] = await Promise.all([
+      readMcpConfig(dataDir),
+      readQnaTopics(dataDir),
+    ]);
 
-    if (!mcpConfig) {
+    const mergedMcpConfig = injectQnaTopics(mcpConfig, qnaTopics);
+
+    if (!mergedMcpConfig) {
       log.warn("No MCP config found, skipping Forgejo poll");
       return;
     }
 
-    await mcp.connect(mcpConfig);
+    await mcp.connect(mergedMcpConfig);
+
+    const client = createLLMClient(config);
+    mcp.configureQna(client, config.model);
 
     let raw: string;
     try {
@@ -117,7 +127,6 @@ export async function handleForgejoPoll(config: AppConfig): Promise<void> {
       toolExecutor: mcp.call.bind(mcp),
     });
 
-    const client = createLLMClient(config);
     const agent = new Agent({
       client,
       model: config.model,

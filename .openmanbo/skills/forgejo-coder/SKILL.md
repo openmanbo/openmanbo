@@ -7,7 +7,7 @@ description: "Use when a Forgejo issue needs implementation, a PR needs code cha
 
 ## Purpose
 
-This is the **implementation sub-skill** of the base `forgejo` skill. It takes over when a task has been identified (by the base skill's triage or discovery scenarios) and needs actual code changes.
+This is the **implementation sub-skill** of the base `forgejo` skill. It takes over when a task has been identified (by the base skill's triage or discovery) and needs actual code changes.
 
 Responsibilities:
 - Implement issues: analyze code, make changes, validate, commit, open a PR.
@@ -26,121 +26,24 @@ This skill does **not** handle discovery, triage, or notification routing — th
 
 ---
 
-## Scenarios
+## Conventions
 
-### Scenario A: Handle PR Change Requests
+Instead of a rigid step-by-step workflow, follow these core conventions when implementing tasks:
 
-**When**: A pull request the agent authored (or is responsible for) has received review comments requesting changes.
-
-**Steps**:
-
-1. Identify the PR — from the base skill's triage output or a direct user instruction.
-2. Fetch full review context:
-   - `get_pull_request` for PR metadata (branch, base, state).
-   - `list_pull_request_reviews` for all review submissions.
-   - `list_issue_comments` for general PR comments.
-   - `get_pull_request_diff` to see the current diff.
-   - `get_pull_request_files` to see which files are affected.
-3. For each review comment or requested change:
-   - Understand exactly what the reviewer wants changed and why.
-   - Classify: code style fix, logic bug, missing test, design disagreement, scope question.
-4. If the request is a **design disagreement** or **scope question**, respond with a `create_comment` explaining the rationale before changing code.
-5. For actionable changes:
-   - Check out the PR branch locally.
-   - Implement the requested fixes (directly or via Claude Code — see Appendix A).
-   - Run validation (tests, linters).
-   - Commit with a message referencing the review, e.g. `fix: address review feedback on #<number>`.
-   - Push to the same branch (the PR updates automatically).
-6. After pushing, post a summary comment via `create_comment`:
-   - List what was changed per review point.
-   - Note anything intentionally not changed, with reasoning.
-   - **@ mention the reviewer(s)** who requested changes, notifying them that fixes are ready for re-review. Get reviewer usernames from `list_pull_request_reviews`. Example: `@reviewer-username I've addressed your feedback — please take another look.`
-7. **Update memory**: record that review feedback was addressed, with a summary of changes made.
-
----
-
-### Scenario B: Implement an Issue
-
-**When**: A specific issue has been selected for implementation (typically routed from the base `forgejo` skill).
-
-**Steps**:
-
-#### B.1 — Announce start
-
-- Post a comment on the issue via `create_comment` announcing that you are starting work. Keep it brief, e.g. "I'm picking this up now — will open a WIP PR shortly."
-- This lets watchers know the issue is being actively worked on.
-
-#### B.2 — Gather full issue context
-
-- `get_issue` for the full issue body.
-- `list_issue_comments` for the discussion thread.
-- Extract: task description, expected behavior, acceptance criteria, constraints, labels, dependencies, non-goals.
-- If ambiguous, prepare clarifying questions and post them via `create_comment` before proceeding.
-
-#### B.3 — Analyze the local repository
-
-- Inspect relevant files, tests, scripts, and configuration in the local repository.
-- Identify the change surface, affected modules, risks, and validation approach.
-- Write a short implementation plan.
-
-#### B.4 — Implement
-
-Choose one:
-
-- **Direct implementation**: Make the changes yourself if the task is straightforward.
-- **Delegate to Claude Code**: For complex tasks, build a structured prompt and hand off (see Appendix A for the prompt template).
-
-In both cases:
-- Keep changes minimal and focused.
-- Follow existing code style.
-- Do not modify unrelated files.
-
-#### B.5 — Validate
-
-- Run tests, linters, and project checks.
-- Confirm the implementation matches the issue acceptance criteria.
-- Review the diff for accidental churn, debug leftovers, or scope creep.
-
-#### B.6 — Commit & push
-
-- Create or switch to a branch: `issue/<number>-<short-slug>`.
-- Review `git status` and `git diff` before committing.
-- Commit with message: `fix: resolve issue #<number> — <short-summary>` (or `feat:` as appropriate).
-- Ensure the commit contains only task-relevant changes.
-- Push the branch.
-
-#### B.7 — Open the merge request
-
-- Call `create_pull_request` with:
-  - `title`: **prefix with `WIP: `** while work is not yet complete, e.g. `WIP: fix: resolve #<number> — <short-summary>`
-  - `head`: the feature branch
-  - `base`: the default branch (usually `main`)
-  - `body`: issue link, implementation summary, validation performed, remaining caveats
-- If the repository has assignees or labels to set, use `edit_pull_request` after creation.
-- The `WIP: ` prefix signals that the PR is not ready for final review or merge. Remove it only when all work is complete (see B.7).
-
-#### B.8 — Monitor & iterate
-
-- After the MR is created, check for review feedback:
-  - `list_pull_request_reviews` and `list_issue_comments` on the PR.
-- If changes are requested, route to **Scenario A** (Handle PR Change Requests).
-- When all implementation and review feedback are addressed and validation passes, **remove the `WIP: ` prefix** from the PR title via `edit_pull_request`.
-- After removing the `WIP: ` prefix, **@ mention the reviewer(s)** via `create_comment` to signal the PR is ready for final review or merge. Example: `@reviewer-username WIP removed — this PR is ready for final review.`
-- **If this issue is a sub-issue** (title contains `[Part of #N]` or body references a parent issue): after the PR is merged or the issue is otherwise completed, **@ mention the issue creator** (the PM agent who created and assigned this sub-issue) on this issue to report completion. Example: `@pm-bot Sub-issue #43 is complete — PR #18 merged.`
-- The task is done only when the PR is approved or merged.
-- **Update memory** at each state change: PR opened → review received → changes pushed → WIP removed → merged/closed.
-
----
+1. **WIP Prefix**: When opening a Pull Request that is NOT fully ready for review, you MUST prefix the title with `WIP: ` (e.g., `WIP: fix: resolve #42`). Remove the prefix only when the PR is fully implemented, verified, and ready.
+2. **Reviewer Notification**: When addressing feedback or marking a PR ready (removing `WIP:`), you MUST `@` mention the reviewer(s) who requested changes or need to review. Example: `@reviewer-username I've addressed the feedback, please take a look.`
+3. **Blocker Reporting**: If you encounter an unrecoverable error, missing dependency, or ambiguous requirement, you MUST leave a comment on the relevant issue or PR explaining the blocker clearly. Do not silently fail.
+4. **Focused Commits**: Ensure commits are task-relevant, without modifying unrelated files.
 
 ## @ Mention Rules
 
-These rules apply across all scenarios in this skill:
+These rules apply to all actions in this skill:
 
-1. **After addressing review feedback** (Scenario A step 6): Always @ mention the **reviewer(s)** who requested changes. Get their usernames from `list_pull_request_reviews` — look for reviews with `REQUEST_CHANGES` state.
-2. **After removing WIP prefix** (Scenario B step B.8): @ mention the reviewer(s) to signal readiness for final review.
+1. **After addressing review feedback**: Always @ mention the **reviewer(s)** who requested changes. Get their usernames from `list_pull_request_reviews` — look for reviews with `REQUEST_CHANGES` state.
+2. **After removing WIP prefix**: @ mention the reviewer(s) to signal readiness for final review.
 3. **Never assume** who the reviewer is — always check `list_pull_request_reviews` for the actual reviewer usernames.
 4. **Format**: Use `@username` at the start of a `create_comment` on the PR, with a brief summary of what action is needed.
-5. **After completing a sub-issue** (Scenario B step B.8): If the issue title contains `[Part of #N]` or the body references a parent issue, @ mention the **issue creator** (the PM agent who created and assigned this sub-issue) on this issue to report completion. Get the creator username from `get_issue` → `user` field.
+5. **After completing a sub-issue**: If the issue title contains `[Part of #N]` or the body references a parent issue, @ mention the **issue creator** (the PM agent who created and assigned this sub-issue) on this issue to report completion. Get the creator username from `get_issue` → `user` field.
 
 ---
 
@@ -204,7 +107,7 @@ If a **WIP PR** was already opened, update the PR body or post a comment there a
 
 ### Iteration
 - After opening a PR, the work is not done — monitor for review feedback.
-- Address review comments promptly via Scenario A rather than ignoring them.
+- Address review comments promptly promptly rather than ignoring them.
 
 ---
 

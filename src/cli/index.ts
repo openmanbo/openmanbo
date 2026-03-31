@@ -11,7 +11,7 @@ import {
   buildSkillRouteMessages,
 } from "../kernel/index.js";
 import { DiscordChannel } from "../channel/index.js";
-import { resolveDataDir, readIdentity, readMcpConfig, readSkills } from "../storage/index.js";
+import { resolveDataDir, readIdentity, readMcpConfig, readSkills, readQnaTopics } from "../storage/index.js";
 import { McpManager } from "../mcp/index.js";
 import { LifecycleManager, Scheduler, AdminServer, type IpcMessage } from "../daemon/index.js";
 import { handleForgejoPoll, isForgejoProcessing } from "../trigger/index.js";
@@ -44,16 +44,21 @@ program
     });
 
     const dataDir = resolveDataDir(config.dataDir);
-    const [identity, skills, mcpConfig] = await Promise.all([
+    const [identity, skills, mcpConfig, qnaTopics] = await Promise.all([
       readIdentity(dataDir),
       readSkills(dataDir),
       readMcpConfig(dataDir),
+      readQnaTopics(dataDir),
     ]);
 
     const mcp = new McpManager();
-    if (mcpConfig) {
-      await mcp.connect(mcpConfig);
+    const mergedMcpConfig = injectQnaTopics(mcpConfig, qnaTopics);
+    if (mergedMcpConfig) {
+      await mcp.connect(mergedMcpConfig);
     }
+
+    const client = createLLMClient(config);
+    mcp.configureQna(client, config.model);
 
     const toolConfig = withSkillTool({
       skills,
@@ -61,7 +66,6 @@ program
       toolExecutor: mcp.call.bind(mcp),
     });
 
-    const client = createLLMClient(config);
     const agent = new Agent({
       client,
       model: config.model,
@@ -102,16 +106,21 @@ program
     });
 
     const dataDir = resolveDataDir(config.dataDir);
-    const [identity, skills, mcpConfig] = await Promise.all([
+    const [identity, skills, mcpConfig, qnaTopics] = await Promise.all([
       readIdentity(dataDir),
       readSkills(dataDir),
       readMcpConfig(dataDir),
+      readQnaTopics(dataDir),
     ]);
 
     const mcp = new McpManager();
-    if (mcpConfig) {
-      await mcp.connect(mcpConfig);
+    const mergedMcpConfig = injectQnaTopics(mcpConfig, qnaTopics);
+    if (mergedMcpConfig) {
+      await mcp.connect(mergedMcpConfig);
     }
+
+    const client = createLLMClient(config);
+    mcp.configureQna(client, config.model);
 
     const toolConfig = withSkillTool({
       skills,
@@ -119,7 +128,6 @@ program
       toolExecutor: mcp.call.bind(mcp),
     });
 
-    const client = createLLMClient(config);
     const agent = new Agent({
       client,
       model: config.model,
@@ -188,16 +196,21 @@ program
     }
 
     const dataDir = resolveDataDir(config.dataDir);
-    const [identity, skills, mcpConfig] = await Promise.all([
+    const [identity, skills, mcpConfig, qnaTopics] = await Promise.all([
       readIdentity(dataDir),
       readSkills(dataDir),
       readMcpConfig(dataDir),
+      readQnaTopics(dataDir),
     ]);
 
     const mcp = new McpManager();
-    if (mcpConfig) {
-      await mcp.connect(mcpConfig);
+    const mergedMcpConfig = injectQnaTopics(mcpConfig, qnaTopics);
+    if (mergedMcpConfig) {
+      await mcp.connect(mergedMcpConfig);
     }
+
+    const client = createLLMClient(config);
+    mcp.configureQna(client, config.model);
 
     const channel = new DiscordChannel({
       botToken: config.discordBotToken,
@@ -279,6 +292,31 @@ program
 
     console.log("[daemon] Daemon is running. Press Ctrl+C to stop.");
   });
+
+/* ── Helper: inject Q&A topics into MCP config ─────────────────────── */
+
+import type { McpConfig, QnaTopic } from "../mcp/index.js";
+
+function injectQnaTopics(
+  mcpConfig: McpConfig | undefined,
+  qnaTopics: QnaTopic[],
+): McpConfig | undefined {
+  if (!qnaTopics.length) {
+    return mcpConfig;
+  }
+
+  const base = mcpConfig ?? {};
+  return {
+    ...base,
+    builtinTools: {
+      ...base.builtinTools,
+      qna: {
+        ...base.builtinTools?.qna,
+        topics: qnaTopics,
+      },
+    },
+  };
+}
 
 /* ── Agent-side IPC setup ──────────────────────────────────────────── */
 

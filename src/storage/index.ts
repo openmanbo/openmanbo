@@ -7,6 +7,7 @@ import {
   type BuiltinExecToolConfig,
   type McpConfig,
   type McpServerConfig,
+  type QnaTopic,
 } from "../mcp/types.js";
 import type { SkillDefinition } from "../kernel/prompt.js";
 
@@ -374,5 +375,39 @@ export async function readMcpConfig(
     return normalizeMcpConfig(JSON.parse(content) as McpConfig, dataDir);
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Read Q&A instruction files from the .openmanbo/qna directory.
+ * Each subdirectory or markdown file represents a topic.
+ * Returns all non-empty instruction files as QnaTopic objects.
+ */
+export async function readQnaTopics(dataDir: string): Promise<QnaTopic[]> {
+  const qnaDir = path.join(dataDir, "qna");
+
+  try {
+    const instructionPaths = await collectSkillFiles(qnaDir, qnaDir);
+    const topics: Array<QnaTopic | undefined> = await Promise.all(
+      instructionPaths.map(async (filePath) => {
+        const rawContent = await fs.readFile(filePath, "utf-8");
+        const parsed = parseSkillFile(rawContent);
+        if (!parsed.content) {
+          return undefined;
+        }
+
+        const relativePath = path.relative(qnaDir, filePath).replace(/\\/g, "/");
+        return {
+          name: parsed.frontmatter.name?.trim() || inferSkillName(relativePath, parsed.content),
+          description: parsed.frontmatter.description?.trim() || undefined,
+          content: parsed.content,
+          source: `qna/${relativePath}`,
+        } satisfies QnaTopic;
+      }),
+    );
+
+    return topics.filter((topic): topic is QnaTopic => topic !== undefined);
+  } catch {
+    return [];
   }
 }

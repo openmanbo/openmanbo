@@ -80,6 +80,7 @@ Instead of a rigid step-by-step workflow, follow these core conventions when man
 2. **Cross-Referencing**: When creating sub-issues, you MUST include a reference to the parent issue in the title (e.g., `[Part of #<parent-id>]`) and the body.
 3. **Parent Lifecycle**: Only close the parent issue when ALL sub-tasks in the checklist are confirmed complete.
 4. **Notify Agents**: Use `@` mentions to assign or notify the relevant agents whenever a sub-issue is ready to be handled.
+5. **Agents.md Maintenance**: Use the workspace root `Agents.md` for durable repository context such as subsystem boundaries, recurring commands, and delegation-relevant project structure. Update it when you confirm stable facts that will help future planning.
 
 ## @ Mention Rules
 
@@ -110,6 +111,7 @@ These rules apply to all actions in this skill:
 - Do not mark a sub-issue as complete without verifying it (PR merged, tests pass, acceptance criteria met).
 - Do not close the parent issue until all sub-issues are verified complete.
 - Keep the parent issue checklist up-to-date — stale checklists lead to confusion.
+- Do not store checklist state or issue-by-issue progress in `Agents.md`.
 
 ### Safety
 - Do not create duplicate sub-issues. Before creating, check memory and search existing issues (`search_issues`) for overlap.

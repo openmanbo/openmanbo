@@ -34,6 +34,7 @@ Instead of a rigid step-by-step workflow, follow these core conventions when imp
 2. **Reviewer Notification**: When addressing feedback or marking a PR ready (removing `WIP:`), you MUST `@` mention the reviewer(s) who requested changes or need to review. Example: `@reviewer-username I've addressed the feedback, please take a look.`
 3. **Blocker Reporting**: If you encounter an unrecoverable error, missing dependency, or ambiguous requirement, you MUST leave a comment on the relevant issue or PR explaining the blocker clearly. Do not silently fail.
 4. **Focused Commits**: Ensure commits are task-relevant, without modifying unrelated files.
+5. **Agents.md Maintenance**: Read the workspace root `Agents.md` before implementation when it exists. When you verify durable repository facts such as architecture, commands, or standing conventions, update `Agents.md` so later runs can reuse that context.
 
 ## @ Mention Rules
 
@@ -85,6 +86,7 @@ If a **WIP PR** was already opened, update the PR body or post a comment there a
 2. **Report at the earliest opportunity.** Do not attempt the same failing operation repeatedly — report after a reasonable attempt.
 3. **Update task memory.** Record the blocked status so the agent does not re-attempt the same failing work in subsequent runs.
 4. **Do not close or abandon.** Leave the issue open and assigned. The blocker report is a request for help, not a surrender.
+5. **Keep `Agents.md` clean.** Do not record blockers, temporary branches, or issue-specific progress in `Agents.md`; that file is only for stable project context.
 
 ---
 

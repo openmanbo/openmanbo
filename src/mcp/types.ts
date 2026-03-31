@@ -114,10 +114,27 @@ export interface BuiltinReflectionToolConfig {
   maxInputChars?: number;
 }
 
+/**
+ * Configuration for the built-in context compression tool.
+ */
+export interface BuiltinContextCompressionToolConfig {
+  /** Whether the tool is enabled */
+  enabled?: boolean;
+  /** Tool name exposed to the model */
+  name?: string;
+  /** Tool description exposed to the model */
+  description?: string;
+  /** System prompt used for the internal compression sub-call */
+  systemPrompt?: string;
+  /** Max input characters sent to the compression sub-call */
+  maxInputChars?: number;
+}
+
 export interface BuiltinToolsConfig {
   exec?: BuiltinExecToolConfig;
   qna?: BuiltinQnaToolConfig;
   reflection?: BuiltinReflectionToolConfig;
+  compression?: BuiltinContextCompressionToolConfig;
 }
 
 /**

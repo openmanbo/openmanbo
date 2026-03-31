@@ -404,6 +404,47 @@ Built-in reflection fields:
 
 The tool uses the same LLM client and model as the main agent, but with a stricter prompt that asks for concise critique rather than more execution.
 
+### Built-in Context Compression Tool
+
+OpenManbo can expose a built-in context compression tool that rewrites the current working state into a compact continuation snapshot. This is useful for long-running autonomous flows where the agent should periodically compress accumulated state before moving to the next item.
+
+```json
+{
+  "builtinTools": {
+    "compression": {
+      "enabled": true,
+      "name": "compress_context",
+      "description": "Compress the current working context into a compact continuation snapshot.",
+      "maxInputChars": 16000
+    }
+  }
+}
+```
+
+The compression tool accepts these arguments:
+
+| Field | Description |
+|---|---|
+| `task` | The overall task or objective being pursued |
+| `completed` | Work already completed that should not be repeated |
+| `openItems` | Remaining work, unresolved questions, or pending items |
+| `carryForward` | Optional facts, identifiers, constraints, or decisions to preserve |
+| `nextStep` | Optional immediate next action |
+
+Built-in compression fields:
+
+| Field | Description |
+|---|---|
+| `enabled` | Enable or disable the compression tool |
+| `name` | Tool name exposed to the model (default: `compress_context`) |
+| `description` | Tool description shown to the model |
+| `systemPrompt` | Optional override for the internal compression prompt |
+| `maxInputChars` | Max combined argument characters sent to the compression sub-call |
+
+When the tool is called through the agent reasoning loop, OpenManbo replaces the active in-turn working context with the returned snapshot so later steps continue from the compressed state instead of the full prior trace.
+
+The Forgejo notification poller automatically enables this tool with default settings for its activation prompt, so `compress_context` is available there even when it is omitted from `mcp.json`.
+
 #### Popular MCP servers from [`modelcontextprotocol/servers`](https://github.com/modelcontextprotocol/servers)
 
 ```json

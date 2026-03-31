@@ -3,6 +3,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type OpenAI from "openai";
+import type { ToolExecutionOutput } from "../kernel/tool-execution.js";
 import { BuiltinToolManager } from "./builtin.js";
 import {
   isStdioConfig,
@@ -155,7 +156,7 @@ export class McpManager {
    * Call a tool by name, dispatching to the correct MCP server.
    * Returns the tool result as a string.
    */
-  async call(toolName: string, args: Record<string, unknown>): Promise<string> {
+  async call(toolName: string, args: Record<string, unknown>): Promise<ToolExecutionOutput> {
     if (this.builtinTools.has(toolName)) {
       return this.builtinTools.call(toolName, args);
     }

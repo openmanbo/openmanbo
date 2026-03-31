@@ -6,6 +6,10 @@ import type {
   ChatCompletionTool,
   ChatCompletionMessageFunctionToolCall,
 } from "openai/resources/chat/completions";
+import {
+  normalizeToolExecutionOutput,
+  type ToolExecutionOutput,
+} from "./tool-execution.js";
 
 export interface AgentOptions {
   /** The OpenAI-compatible client */
@@ -20,7 +24,7 @@ export interface AgentOptions {
   toolExecutor?: (
     name: string,
     args: Record<string, unknown>,
-  ) => Promise<string>;
+  ) => Promise<ToolExecutionOutput>;
 }
 
 export interface AgentTurnOptions {
@@ -37,7 +41,7 @@ export class Agent {
   private messages: ChatCompletionMessageParam[];
   private tools: ChatCompletionTool[] | undefined;
   private toolExecutor:
-    | ((name: string, args: Record<string, unknown>) => Promise<string>)
+    | ((name: string, args: Record<string, unknown>) => Promise<ToolExecutionOutput>)
     | undefined;
 
   constructor(options: AgentOptions) {
@@ -68,6 +72,27 @@ export class Agent {
     };
   }
 
+  private buildCompressedTurnMessages(
+    userMessage: string,
+    name: string | undefined,
+    summary: string,
+  ): ChatCompletionMessageParam[] {
+    const trimmedSummary = summary.trim();
+
+    return [
+      this.buildUserMessage(userMessage, name),
+      {
+        role: "assistant",
+        content: [
+          "Working context was compressed into the following continuation snapshot.",
+          "Use it as the active state for the rest of this task and do not repeat completed actions unless new evidence requires it.",
+          "",
+          trimmedSummary,
+        ].join("\n\n"),
+      },
+    ];
+  }
+
   /**
    * Send a user message and stream the assistant's response.
    * Yields string chunks as they arrive.
@@ -83,7 +108,7 @@ export class Agent {
     options?: AgentTurnOptions,
   ): AsyncGenerator<string, void, undefined> {
     const transientTurnMessages = options?.turnMessages ?? [];
-    const turnMessages: ChatCompletionMessageParam[] = [
+    let turnMessages: ChatCompletionMessageParam[] = [
       this.buildUserMessage(userMessage, name),
     ];
 
@@ -146,6 +171,9 @@ export class Agent {
         });
 
         // Execute each tool call and push results
+        let compactSummary: string | undefined;
+        const toolMessages: ChatCompletionMessageParam[] = [];
+
         for (const tc of toolCalls) {
           let args: Record<string, unknown> = {};
           try {
@@ -153,18 +181,36 @@ export class Agent {
           } catch {
             // leave args as empty object if JSON is malformed
           }
-          let toolResult: string;
+          let toolResult: ToolExecutionOutput;
           try {
             toolResult = await this.toolExecutor(tc.name, args);
           } catch (err) {
             toolResult = `Error: ${String(err)}`;
           }
-          turnMessages.push({
+
+          const normalizedResult = normalizeToolExecutionOutput(toolResult);
+          const summary = normalizedResult.compactContext?.summary?.trim();
+          if (summary) {
+            compactSummary = summary;
+          }
+
+          toolMessages.push({
             role: "tool",
             tool_call_id: tc.id,
-            content: toolResult,
+            content: normalizedResult.content,
           });
         }
+
+        if (compactSummary) {
+          turnMessages = this.buildCompressedTurnMessages(
+            userMessage,
+            name,
+            compactSummary,
+          );
+          continue;
+        }
+
+        turnMessages.push(...toolMessages);
         // Continue the loop to let the model produce its next response
         continue;
       }
@@ -189,7 +235,7 @@ export class Agent {
     options?: AgentTurnOptions,
   ): Promise<string> {
     const transientTurnMessages = options?.turnMessages ?? [];
-    const turnMessages: ChatCompletionMessageParam[] = [
+    let turnMessages: ChatCompletionMessageParam[] = [
       this.buildUserMessage(userMessage, name),
     ];
 
@@ -214,6 +260,9 @@ export class Agent {
           tool_calls: message.tool_calls,
         });
 
+        let compactSummary: string | undefined;
+        const toolMessages: ChatCompletionMessageParam[] = [];
+
         for (const tc of message.tool_calls) {
           // Only handle standard function tool calls
           if (tc.type !== "function") continue;
@@ -224,18 +273,36 @@ export class Agent {
           } catch {
             // leave args as empty object
           }
-          let toolResult: string;
+          let toolResult: ToolExecutionOutput;
           try {
             toolResult = await this.toolExecutor(fnTc.function.name, args);
           } catch (err) {
             toolResult = `Error: ${String(err)}`;
           }
-          turnMessages.push({
+
+          const normalizedResult = normalizeToolExecutionOutput(toolResult);
+          const summary = normalizedResult.compactContext?.summary?.trim();
+          if (summary) {
+            compactSummary = summary;
+          }
+
+          toolMessages.push({
             role: "tool",
             tool_call_id: fnTc.id,
-            content: toolResult,
+            content: normalizedResult.content,
           });
         }
+
+        if (compactSummary) {
+          turnMessages = this.buildCompressedTurnMessages(
+            userMessage,
+            name,
+            compactSummary,
+          );
+          continue;
+        }
+
+        turnMessages.push(...toolMessages);
         continue;
       }
 

@@ -10,6 +10,7 @@ import {
   withSkillTool,
   type SkillDefinition,
 } from "../kernel/index.js";
+import type { ToolExecutionOutput } from "../kernel/tool-execution.js";
 import type { AppConfig } from "../config/env.js";
 import type OpenAI from "openai";
 
@@ -36,7 +37,7 @@ export interface DiscordChannelOptions {
   mcpToolExecutor?: (
     name: string,
     args: Record<string, unknown>,
-  ) => Promise<string>;
+  ) => Promise<ToolExecutionOutput>;
 }
 
 /**
@@ -56,7 +57,7 @@ export class DiscordChannel implements Channel {
   private skills: SkillDefinition[];
   private mcpTools: OpenAI.ChatCompletionTool[] | undefined;
   private mcpToolExecutor:
-    | ((name: string, args: Record<string, unknown>) => Promise<string>)
+    | ((name: string, args: Record<string, unknown>) => Promise<ToolExecutionOutput>)
     | undefined;
 
   constructor(options: DiscordChannelOptions) {

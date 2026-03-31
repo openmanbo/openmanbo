@@ -6,7 +6,7 @@ import {
   withSkillTool,
   buildSkillRouteMessages,
 } from "../kernel/index.js";
-import { McpManager } from "../mcp/index.js";
+import { McpManager, type McpConfig } from "../mcp/index.js";
 import {
   resolveDataDir,
   readIdentity,
@@ -36,18 +36,32 @@ Instructions:
 2. Follow the **forgejo** skill to get details on each notification and determine the appropriate response:
    - Call get_user to confirm identity.
    - Call list_notifications to fetch unread notifications.
-  - Classify, prioritize, and route each actionable notification.
-3. For each actionable notification, execute the appropriate scenario or sub-skill:
+   - Classify, prioritize, and route each actionable notification.
+3. If you are handling a long queue, switching between substantially different notifications, or the working context is getting crowded, call compress_context to create a compact continuation snapshot before proceeding.
+4. For each actionable notification, execute the appropriate scenario or sub-skill:
    - Issue assigned to you → load forgejo-coder and implement it.
    - @ mention requesting action → respond via create_comment, then implement if needed.
    - Review request / review comment → load forgejo-coder to address feedback.
    - Informational (merged/closed) → mark as read and move on.
-4. If you are blocked, use ask tool to request help from instructions.
-5. After processing one notification, call mark_notification_read to mark it as read. 
-6. Use self-reflection tool to review your performance after each notification and adjust your approach for the next one.
+5. If you are blocked, use ask tool to request help from instructions.
+6. After processing one notification, call mark_notification_read to mark it as read.
+7. Use self-reflection tool after each notification and adjust your approach for the next one.
 
-Do not skip the sequential-thinking step or the forgejo skill instructions.\
+Do not skip the sequential-thinking step or the forgejo skill instructions. Use compress_context when it will materially improve continuity, not by default after every notification.\
 `;
+
+function ensureActivationCompressionTool(config: McpConfig): McpConfig {
+  return {
+    ...config,
+    builtinTools: {
+      ...config.builtinTools,
+      compression: {
+        ...config.builtinTools?.compression,
+        enabled: true,
+      },
+    },
+  };
+}
 
 /**
  * Poll Forgejo for unread notifications and, if any are found,
@@ -80,14 +94,15 @@ export async function handleForgejoPoll(config: AppConfig): Promise<void> {
       return;
     }
 
-    await mcp.connect(mergedMcpConfig);
+    await mcp.connect(ensureActivationCompressionTool(mergedMcpConfig));
 
     const client = createLLMClient(config);
     mcp.configureQna(client, config.model);
 
     let raw: string;
     try {
-      raw = await mcp.call("list_notifications", {});
+      const result = await mcp.call("list_notifications", {});
+      raw = typeof result === "string" ? result : result.content;
     } catch (err) {
       log.error("Failed to call list_notifications", { error: String(err) });
       return;

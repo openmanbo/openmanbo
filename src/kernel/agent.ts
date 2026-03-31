@@ -21,10 +21,33 @@ export interface AgentOptions {
     name: string,
     args: Record<string, unknown>,
   ) => Promise<string>;
+  /** Optional event handlers for observing turns and tool execution. */
+  eventHandlers?: AgentEventHandlers;
 }
 
 export interface AgentTurnOptions {
   turnMessages?: ChatCompletionMessageParam[];
+}
+
+export interface AgentToolEventPayload {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  argumentsRaw: string;
+}
+
+export interface AgentToolResultEventPayload extends AgentToolEventPayload {
+  result: string;
+}
+
+export interface AgentToolErrorEventPayload extends AgentToolEventPayload {
+  error: string;
+}
+
+export interface AgentEventHandlers {
+  onToolCallStart?: (payload: AgentToolEventPayload) => void;
+  onToolCallSuccess?: (payload: AgentToolResultEventPayload) => void;
+  onToolCallError?: (payload: AgentToolErrorEventPayload) => void;
 }
 
 /**
@@ -39,6 +62,7 @@ export class Agent {
   private toolExecutor:
     | ((name: string, args: Record<string, unknown>) => Promise<string>)
     | undefined;
+  private eventHandlers: AgentEventHandlers;
 
   constructor(options: AgentOptions) {
     this.client = options.client;
@@ -46,10 +70,15 @@ export class Agent {
     this.messages = [];
     this.tools = options.tools?.length ? options.tools : undefined;
     this.toolExecutor = options.toolExecutor;
+    this.eventHandlers = options.eventHandlers ?? {};
 
     if (options.systemPrompt) {
       this.messages.push({ role: "system", content: options.systemPrompt });
     }
+  }
+
+  setEventHandlers(eventHandlers: AgentEventHandlers | undefined): void {
+    this.eventHandlers = eventHandlers ?? {};
   }
 
   /**
@@ -153,11 +182,29 @@ export class Agent {
           } catch {
             // leave args as empty object if JSON is malformed
           }
+
+          const eventPayload: AgentToolEventPayload = {
+            id: tc.id,
+            name: tc.name,
+            args,
+            argumentsRaw: tc.argumentsRaw,
+          };
+          this.eventHandlers.onToolCallStart?.(eventPayload);
+
           let toolResult: string;
           try {
             toolResult = await this.toolExecutor(tc.name, args);
+            this.eventHandlers.onToolCallSuccess?.({
+              ...eventPayload,
+              result: toolResult,
+            });
           } catch (err) {
-            toolResult = `Error: ${String(err)}`;
+            const error = String(err);
+            this.eventHandlers.onToolCallError?.({
+              ...eventPayload,
+              error,
+            });
+            toolResult = `Error: ${error}`;
           }
           turnMessages.push({
             role: "tool",
@@ -224,11 +271,29 @@ export class Agent {
           } catch {
             // leave args as empty object
           }
+
+          const eventPayload: AgentToolEventPayload = {
+            id: fnTc.id,
+            name: fnTc.function.name,
+            args,
+            argumentsRaw: fnTc.function.arguments,
+          };
+          this.eventHandlers.onToolCallStart?.(eventPayload);
+
           let toolResult: string;
           try {
             toolResult = await this.toolExecutor(fnTc.function.name, args);
+            this.eventHandlers.onToolCallSuccess?.({
+              ...eventPayload,
+              result: toolResult,
+            });
           } catch (err) {
-            toolResult = `Error: ${String(err)}`;
+            const error = String(err);
+            this.eventHandlers.onToolCallError?.({
+              ...eventPayload,
+              error,
+            });
+            toolResult = `Error: ${error}`;
           }
           turnMessages.push({
             role: "tool",

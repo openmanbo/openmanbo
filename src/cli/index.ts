@@ -18,6 +18,7 @@ import { handleForgejoPoll, isForgejoProcessing } from "../trigger/index.js";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { resolve as resolvePath } from "node:path";
+import { runTuiSession } from "./tui.js";
 
 const program = new Command();
 
@@ -160,6 +161,61 @@ program
     }
 
     await mcp.disconnect();
+  });
+
+// ── tui command: enhanced terminal UI session ─────────────────────
+program
+  .command("tui")
+  .description("Start an enhanced TUI chat session")
+  .option("--api-key <key>", "OpenAI-compatible API key")
+  .option("--api-base-url <url>", "OpenAI-compatible API base URL")
+  .option("--model <model>", "Model name to use")
+  .option("--data-dir <path>", "Path to the .openmanbo storage directory")
+  .action(async (opts) => {
+    const config = loadConfig({
+      apiKey: opts.apiKey,
+      apiBaseUrl: opts.apiBaseUrl,
+      model: opts.model,
+      dataDir: opts.dataDir,
+    });
+
+    const dataDir = resolveDataDir(config.dataDir);
+    const [identity, skills, mcpConfig] = await Promise.all([
+      readIdentity(dataDir),
+      readSkills(dataDir),
+      readMcpConfig(dataDir),
+    ]);
+
+    const mcp = new McpManager();
+    if (mcpConfig) {
+      await mcp.connect(mcpConfig);
+    }
+
+    const toolConfig = withSkillTool({
+      skills,
+      tools: mcp.tools,
+      toolExecutor: mcp.call.bind(mcp),
+    });
+
+    const client = createLLMClient(config);
+    const agent = new Agent({
+      client,
+      model: config.model,
+      systemPrompt: buildSystemPrompt({ identity, skills }),
+      ...(toolConfig.tools?.length ? toolConfig : {}),
+    });
+
+    try {
+      await runTuiSession({
+        agent,
+        skills,
+        onExit: async () => {
+          await mcp.disconnect();
+        },
+      });
+    } finally {
+      await mcp.disconnect();
+    }
   });
 
 // ── discord command: run as a Discord bot ─────────────────────────

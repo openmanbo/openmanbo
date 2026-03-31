@@ -37,17 +37,21 @@ Instructions:
    - Call get_user to confirm identity.
    - Call list_notifications to fetch unread notifications.
    - Classify, prioritize, and route each actionable notification.
-3. If you are handling a long queue, switching between substantially different notifications, or the working context is getting crowded, call compress_context to create a compact continuation snapshot before proceeding.
-4. For each actionable notification, execute the appropriate scenario or sub-skill:
+3. Prefer the built-in exec tool whenever concrete work can be done locally in the repository or shell environment.
+  - Use exec to inspect files, edit code, run tests, format, validate, and gather evidence instead of stopping at analysis.
+  - Do not defer actionable local work when exec can move the task forward safely.
+  - Keep using dedicated Forgejo or MCP tools for Forgejo API actions such as reading notifications, posting comments, and marking notifications read.
+4. If you are handling a long queue, switching between substantially different notifications, or the working context is getting crowded, call compress_context to create a compact continuation snapshot before proceeding.
+5. For each actionable notification, execute the appropriate scenario or sub-skill:
    - Issue assigned to you → load forgejo-coder and implement it.
    - @ mention requesting action → respond via create_comment, then implement if needed.
    - Review request / review comment → load forgejo-coder to address feedback.
    - Informational (merged/closed) → mark as read and move on.
-5. If you are blocked, use ask tool to request help from instructions.
-6. After processing one notification, call mark_notification_read to mark it as read.
-7. Use self-reflection tool after each notification and adjust your approach for the next one.
+6. If you are blocked, use ask tool to request help from instructions.
+7. After processing one notification, call mark_notification_read to mark it as read.
+8. Use self-reflection tool after each notification and adjust your approach for the next one.
 
-Do not skip the sequential-thinking step or the forgejo skill instructions. Use compress_context when it will materially improve continuity, not by default after every notification.\
+Do not skip the sequential-thinking step or the forgejo skill instructions. Prefer exec for concrete local work whenever it is available and appropriate. Use compress_context when it will materially improve continuity, not by default after every notification.\
 `;
 
 function ensureActivationCompressionTool(config: McpConfig): McpConfig {

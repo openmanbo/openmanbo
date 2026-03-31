@@ -7,13 +7,13 @@ import {
   buildSkillRouteMessages,
 } from "../kernel/index.js";
 import { McpManager } from "../mcp/index.js";
-import type { McpConfig, QnaTopic } from "../mcp/index.js";
 import {
   resolveDataDir,
   readIdentity,
   readMcpConfig,
   readSkills,
   readQnaTopics,
+  injectQnaTopics,
 } from "../storage/index.js";
 import { createLogger } from "../logger.js";
 
@@ -184,25 +184,4 @@ function hasUnreadNotifications(raw: string): boolean {
 
   // If we got a non-empty response that isn't "no notifications", assume work exists
   return true;
-}
-
-function injectQnaTopics(
-  mcpConfig: McpConfig | undefined,
-  qnaTopics: QnaTopic[],
-): McpConfig | undefined {
-  if (!qnaTopics.length) {
-    return mcpConfig;
-  }
-
-  const base = mcpConfig ?? {};
-  return {
-    ...base,
-    builtinTools: {
-      ...base.builtinTools,
-      qna: {
-        ...base.builtinTools?.qna,
-        topics: qnaTopics,
-      },
-    },
-  };
 }

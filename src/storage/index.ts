@@ -411,3 +411,29 @@ export async function readQnaTopics(dataDir: string): Promise<QnaTopic[]> {
     return [];
   }
 }
+
+/**
+ * Inject Q&A topics into an MCP config as built-in tool configuration.
+ * Returns the original config if no topics are provided, or a merged
+ * config with Q&A topics added to builtinTools.qna.
+ */
+export function injectQnaTopics(
+  mcpConfig: McpConfig | undefined,
+  qnaTopics: QnaTopic[],
+): McpConfig | undefined {
+  if (!qnaTopics.length) {
+    return mcpConfig;
+  }
+
+  const base = mcpConfig ?? {};
+  return {
+    ...base,
+    builtinTools: {
+      ...base.builtinTools,
+      qna: {
+        ...base.builtinTools?.qna,
+        topics: qnaTopics,
+      },
+    },
+  };
+}

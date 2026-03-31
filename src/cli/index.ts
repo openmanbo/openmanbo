@@ -11,7 +11,7 @@ import {
   buildSkillRouteMessages,
 } from "../kernel/index.js";
 import { DiscordChannel } from "../channel/index.js";
-import { resolveDataDir, readIdentity, readMcpConfig, readSkills, readQnaTopics } from "../storage/index.js";
+import { resolveDataDir, readIdentity, readMcpConfig, readSkills, readQnaTopics, injectQnaTopics } from "../storage/index.js";
 import { McpManager } from "../mcp/index.js";
 import { LifecycleManager, Scheduler, AdminServer, type IpcMessage } from "../daemon/index.js";
 import { handleForgejoPoll, isForgejoProcessing } from "../trigger/index.js";
@@ -292,31 +292,6 @@ program
 
     console.log("[daemon] Daemon is running. Press Ctrl+C to stop.");
   });
-
-/* ── Helper: inject Q&A topics into MCP config ─────────────────────── */
-
-import type { McpConfig, QnaTopic } from "../mcp/index.js";
-
-function injectQnaTopics(
-  mcpConfig: McpConfig | undefined,
-  qnaTopics: QnaTopic[],
-): McpConfig | undefined {
-  if (!qnaTopics.length) {
-    return mcpConfig;
-  }
-
-  const base = mcpConfig ?? {};
-  return {
-    ...base,
-    builtinTools: {
-      ...base.builtinTools,
-      qna: {
-        ...base.builtinTools?.qna,
-        topics: qnaTopics,
-      },
-    },
-  };
-}
 
 /* ── Agent-side IPC setup ──────────────────────────────────────────── */
 

@@ -121,11 +121,15 @@ export class McpManager {
   }
 
   /**
-   * Configure the built-in Q&A tool with an LLM client for sub-agent calls.
-   * Must be called after connect() and before any tool execution involving Q&A.
+   * Configure built-in tools that require an LLM client for sub-calls.
+   * Must be called after connect() and before any tool execution involving those tools.
    */
+  configureBuiltins(client: OpenAI, model: string): void {
+    this.builtinTools.configure(client, model);
+  }
+
   configureQna(client: OpenAI, model: string): void {
-    this.builtinTools.configureQna(client, model);
+    this.configureBuiltins(client, model);
   }
 
   /**

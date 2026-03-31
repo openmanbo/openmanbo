@@ -98,9 +98,26 @@ export interface BuiltinQnaToolConfig {
   topics: QnaTopic[];
 }
 
+/**
+ * Configuration for the built-in self-reflection tool.
+ */
+export interface BuiltinReflectionToolConfig {
+  /** Whether the tool is enabled */
+  enabled?: boolean;
+  /** Tool name exposed to the model */
+  name?: string;
+  /** Tool description exposed to the model */
+  description?: string;
+  /** System prompt used for the reflection sub-call */
+  systemPrompt?: string;
+  /** Max input characters sent to the reflection sub-call */
+  maxInputChars?: number;
+}
+
 export interface BuiltinToolsConfig {
   exec?: BuiltinExecToolConfig;
   qna?: BuiltinQnaToolConfig;
+  reflection?: BuiltinReflectionToolConfig;
 }
 
 /**

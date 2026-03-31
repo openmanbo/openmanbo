@@ -29,37 +29,24 @@ export function isForgejoProcessing(): boolean {
 const ACTIVATION_PROMPT = `\
 You have been activated by the scheduled Forgejo notification poller — new unread notifications exist.
 
-You are running in **autonomous mode** — there is no human in the loop. \
-You must make all decisions independently and execute every task to completion. \
-NEVER ask clarifying questions. NEVER ask for permission. NEVER present a summary and wait. NEVER say "should I" or "let me know". \
-If something is ambiguous, use your best judgment and proceed. \
-When a notification requires action (implementation, response, review), DO IT immediately — do not describe what you would do.
+Work through the unread notifications autonomously and complete the needed actions where possible.
 
 Instructions:
-1. Use sequential-thinking (sequentialthinking tool) to plan your approach before taking action.
-2. Follow the **forgejo** skill — start with **Scenario A: Triage Notifications** as defined in the skill.
+1. Use sequential-thinking (sequentialthinking tool) to plan before taking action.
+2. Follow the **forgejo** skill to get details on each notification and determine the appropriate response:
    - Call get_user to confirm identity.
    - Call list_notifications to fetch unread notifications.
-   - Classify, prioritize, and route each actionable notification per the skill's decision routing.
-3. For each actionable notification, **immediately execute** the appropriate scenario or sub-skill:
+  - Classify, prioritize, and route each actionable notification.
+3. For each actionable notification, execute the appropriate scenario or sub-skill:
    - Issue assigned to you → load forgejo-coder and implement it.
    - @ mention requesting action → respond via create_comment, then implement if needed.
    - Review request / review comment → load forgejo-coder to address feedback.
    - Informational (merged/closed) → mark as read and move on.
-4. **Hard rules — never violate these:**
-   - NEVER close an issue — issues are closed by PR merge or by a human.
-   - NEVER push to existing branches (main, master, develop, etc.). Always create a new feature branch.
-   - ALWAYS submit work as a Pull Request via create_pull_request.
-   - **ALWAYS report blockers on Forgejo.** If you cannot complete a task (implementation fails, tests break, dependencies are missing, requirements are ambiguous, access is denied, or any other reason), you MUST post a comment on the relevant issue or PR via create_comment listing:
-     a. What you attempted.
-     b. The specific error or blocking reason.
-     c. What human intervention or clarification is needed to unblock.
-   - Do NOT silently give up. Every failed task must leave a visible trail on Forgejo explaining why it could not be completed.
-5. After processing each notification, call mark_notification_read to mark it as read. \
-When all notifications are handled, you may call mark_all_notifications_read instead.
-6. Process **all** actionable notifications in this session — do not stop after the first one.
+4. If you are blocked, use ask tool to request help from instructions.
+5. After processing one notification, call mark_notification_read to mark it as read. 
+6. Use self-reflection tool to review your performance after each notification and adjust your approach for the next one.
 
-Do not skip the sequential-thinking step. Do not skip reading the forgejo skill instructions.\
+Do not skip the sequential-thinking step or the forgejo skill instructions.\
 `;
 
 /**

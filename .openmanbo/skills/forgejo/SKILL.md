@@ -39,7 +39,6 @@ Before acting in a repository, read the workspace root `Agents.md` if it exists.
 ## Guardrails
 
 - Always call `get_user` at the start to confirm identity.
-- **Never auto-merge** a PR without explicit user approval.
 - Do not merge `WIP:` PRs.
 - Do not force-push or rewrite shared branch history.
 - Do not attempt implementation within this base skill — load the appropriate sub-skill.

@@ -87,7 +87,16 @@ async function main() {
     // Register the tool call handler
     server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
         const { name, arguments: args } = request.params;
-        const result = await (0, handlers_js_1.handleTool)(client, name, (args ?? {}));
+        let result;
+        if (name === "get_git_token") {
+            result = [
+                `Forgejo URL: ${config.baseUrl}`,
+                `Token: ${config.token}`,
+            ].join("\n");
+        }
+        else {
+            result = await (0, handlers_js_1.handleTool)(client, name, (args ?? {}));
+        }
         return {
             content: [{ type: "text", text: result }],
         };

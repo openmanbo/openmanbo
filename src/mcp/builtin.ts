@@ -1,5 +1,9 @@
 import { spawn } from "node:child_process";
 import type OpenAI from "openai";
+import type { ToolExecutionOutput } from "../kernel/tool-execution.js";
+import { BuiltinContextCompressionTool } from "./compression.js";
+import { BuiltinQnaTool } from "./qna.js";
+import { BuiltinReflectionTool } from "./reflection.js";
 import type {
   BuiltinExecAllowlistRule,
   BuiltinExecBlacklistRule,
@@ -29,7 +33,7 @@ const SAFE_ENV_KEYS = [
 interface BuiltinTool {
   name: string;
   definition: OpenAI.ChatCompletionTool;
-  execute(args: Record<string, unknown>): Promise<string>;
+  execute(args: Record<string, unknown>): Promise<ToolExecutionOutput>;
 }
 
 interface CompiledAllowlistRule {
@@ -41,14 +45,55 @@ type CompiledBlacklistRule = CompiledAllowlistRule;
 
 export class BuiltinToolManager {
   private readonly toolsByName = new Map<string, BuiltinTool>();
+  private qnaTool: BuiltinQnaTool | undefined;
+  private reflectionTool: BuiltinReflectionTool | undefined;
+  private compressionTool: BuiltinContextCompressionTool | undefined;
 
   constructor(config?: McpConfig["builtinTools"]) {
-    if (!config?.exec || config.exec.enabled === false) {
-      return;
+    if (config?.exec && config.exec.enabled !== false) {
+      const execTool = new BuiltinExecTool(config.exec);
+      this.toolsByName.set(execTool.name, execTool);
     }
 
-    const execTool = new BuiltinExecTool(config.exec);
-    this.toolsByName.set(execTool.name, execTool);
+    if (config?.qna && config.qna.enabled !== false && config.qna.topics.length > 0) {
+      const qnaTool = new BuiltinQnaTool(config.qna);
+      this.qnaTool = qnaTool;
+      this.toolsByName.set(qnaTool.name, qnaTool);
+    }
+
+    if (config?.reflection && config.reflection.enabled !== false) {
+      const reflectionTool = new BuiltinReflectionTool(config.reflection);
+      this.reflectionTool = reflectionTool;
+      this.toolsByName.set(reflectionTool.name, reflectionTool);
+    }
+
+    if (config?.compression && config.compression.enabled !== false) {
+      const compressionTool = new BuiltinContextCompressionTool(config.compression);
+      this.compressionTool = compressionTool;
+      this.toolsByName.set(compressionTool.name, compressionTool);
+    }
+  }
+
+  /**
+   * Configure built-in tools that require an LLM client.
+   * Must be called after construction and before tool execution.
+   */
+  configure(client: OpenAI, model: string): void {
+    if (this.qnaTool) {
+      this.qnaTool.configure(client, model);
+    }
+
+    if (this.reflectionTool) {
+      this.reflectionTool.configure(client, model);
+    }
+
+    if (this.compressionTool) {
+      this.compressionTool.configure(client, model);
+    }
+  }
+
+  configureQna(client: OpenAI, model: string): void {
+    this.configure(client, model);
   }
 
   get tools(): OpenAI.ChatCompletionTool[] {
@@ -62,7 +107,7 @@ export class BuiltinToolManager {
   async call(
     toolName: string,
     args: Record<string, unknown>,
-  ): Promise<string> {
+  ): Promise<ToolExecutionOutput> {
     const tool = this.toolsByName.get(toolName);
     if (!tool) {
       throw new Error(`Unknown built-in tool: ${toolName}`);

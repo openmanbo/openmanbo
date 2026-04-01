@@ -24,6 +24,8 @@ Typical entry points:
 
 For detailed reference on Forgejo MCP tools, conventions, Git authentication, blocker reporting, task memory, guardrails, and sub-skill conventions, use the **`ask`** tool with topic `forgejo`.
 
+Before acting in a repository, read the workspace root `Agents.md` if it exists. Treat it as the durable project context file for repository purpose, structure, commands, and long-lived conventions.
+
 ## Core Conventions
 
 1. **Language Matching**: Always reply in the same language as the person you are communicating with.
@@ -32,11 +34,12 @@ For detailed reference on Forgejo MCP tools, conventions, Git authentication, bl
 4. **Sub-skill Handoff**: Use `forgejo-coder` for implementation, `forgejo-reviewer` for review, `forgejo-pm` for decomposition.
 5. **Blocker Reporting**: Always report failures via `create_comment` — silent failures are never acceptable.
 6. **Task Memory**: Use memory MCP / filesystem MCP to persist task state across runs.
+7. **Project Context File**: Use the workspace root `Agents.md` to store stable, verified project facts. Create or update it when you confirm durable repository context that future runs should reuse.
 
 ## Guardrails
 
 - Always call `get_user` at the start to confirm identity.
-- **Never auto-merge** a PR without explicit user approval.
 - Do not merge `WIP:` PRs.
 - Do not force-push or rewrite shared branch history.
 - Do not attempt implementation within this base skill — load the appropriate sub-skill.
+- Do not write speculative, temporary, or issue-specific status into `Agents.md`.

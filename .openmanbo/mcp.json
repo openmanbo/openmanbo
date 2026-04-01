@@ -53,6 +53,11 @@
         { "pattern": "rm\\s+-rf\\s+/.*", "description": "Block recursive forced deletion from root" },
         { "pattern": "(?:sudo|doas)\\s+.*", "description": "Block privilege escalation" }
       ]
+    },
+    "reflection": {
+      "enabled": true,
+      "name": "self-reflection",
+      "description": "Review the last completed task, identify misses or risks, and suggest concrete adjustments before continuing."
     }
   }
 }

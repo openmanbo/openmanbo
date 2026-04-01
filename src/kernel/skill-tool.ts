@@ -1,12 +1,13 @@
 import type OpenAI from "openai";
 import type { SkillDefinition } from "./prompt.js";
+import type { ToolExecutionOutput } from "./tool-execution.js";
 
 const LOAD_SKILL_TOOL_NAME = "load-skill";
 
 type ToolExecutor = (
   name: string,
   args: Record<string, unknown>,
-) => Promise<string>;
+) => Promise<ToolExecutionOutput>;
 
 export function createSkillTool(): OpenAI.ChatCompletionTool {
   return {

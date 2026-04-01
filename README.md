@@ -19,6 +19,14 @@ pnpm dev chat "Hello, who are you?"
 pnpm dev interactive
 ```
 
+## Forgejo Container
+
+The Forgejo Doro and Manbo container images now start a File Browser instance alongside the daemon so you can inspect the bundled `.openmanbo` directory from a browser.
+
+When you run `docker compose -f docker/docker-compose.yml up --build`, the `forgejo-manbo` service exposes File Browser on `http://localhost:8080`, and the `forgejo-doro` service exposes File Browser on `http://localhost:8081`. Both point at `/app/.openmanbo`.
+
+The default setup uses `--noauth` for local convenience. Do not expose that port to untrusted networks without adding authentication or a reverse proxy in front of it.
+
 ## CLI Commands
 
 | Command | Description |
@@ -356,6 +364,86 @@ Built-in exec fields:
 Rules are matched against the entire command string. A rule such as `pnpm\\s+(?:build|test)` allows `pnpm build` and `pnpm test`, but rejects `pnpm install`.
 
 Security note: this tool validates commands before launching a shell, but it is not a sandbox. Freeform shell execution with pipes, redirects, and substitutions is inherently riskier than predefined command templates. Keep the allowlist narrow and prefer anchored, specific patterns.
+
+### Built-in Self-Reflection Tool
+
+OpenManbo can also expose a built-in reflection tool for short post-task reviews. This is useful in multi-step workflows such as notification triage, where the agent should pause after one task, review its misses, and apply that adjustment to the next task.
+
+```json
+{
+  "builtinTools": {
+    "reflection": {
+      "enabled": true,
+      "name": "self-reflection",
+      "description": "Review the last completed task, identify misses or risks, and suggest concrete adjustments before continuing.",
+      "maxInputChars": 12000
+    }
+  }
+}
+```
+
+The reflection tool accepts these arguments:
+
+| Field | Description |
+|---|---|
+| `task` | What the agent was trying to accomplish |
+| `summary` | What actions the agent actually took |
+| `outcome` | The resulting state, including unfinished parts |
+| `blockers` | Optional blockers, surprises, or unresolved questions |
+| `nextFocus` | Optional description of the next task to optimize for |
+
+Built-in reflection fields:
+
+| Field | Description |
+|---|---|
+| `enabled` | Enable or disable the reflection tool |
+| `name` | Tool name exposed to the model (default: `self-reflection`) |
+| `description` | Tool description shown to the model |
+| `systemPrompt` | Optional override for the internal reflection prompt |
+| `maxInputChars` | Max combined argument characters sent to the reflection sub-call |
+
+The tool uses the same LLM client and model as the main agent, but with a stricter prompt that asks for concise critique rather than more execution.
+
+### Built-in Context Compression Tool
+
+OpenManbo can expose a built-in context compression tool that rewrites the current working state into a compact continuation snapshot. This is useful for long-running autonomous flows where the agent should periodically compress accumulated state before moving to the next item.
+
+```json
+{
+  "builtinTools": {
+    "compression": {
+      "enabled": true,
+      "name": "compress_context",
+      "description": "Compress the current working context into a compact continuation snapshot.",
+      "maxInputChars": 16000
+    }
+  }
+}
+```
+
+The compression tool accepts these arguments:
+
+| Field | Description |
+|---|---|
+| `task` | The overall task or objective being pursued |
+| `completed` | Work already completed that should not be repeated |
+| `openItems` | Remaining work, unresolved questions, or pending items |
+| `carryForward` | Optional facts, identifiers, constraints, or decisions to preserve |
+| `nextStep` | Optional immediate next action |
+
+Built-in compression fields:
+
+| Field | Description |
+|---|---|
+| `enabled` | Enable or disable the compression tool |
+| `name` | Tool name exposed to the model (default: `compress_context`) |
+| `description` | Tool description shown to the model |
+| `systemPrompt` | Optional override for the internal compression prompt |
+| `maxInputChars` | Max combined argument characters sent to the compression sub-call |
+
+When the tool is called through the agent reasoning loop, OpenManbo replaces the active in-turn working context with the returned snapshot so later steps continue from the compressed state instead of the full prior trace.
+
+The Forgejo notification poller automatically enables this tool with default settings for its activation prompt, so `compress_context` is available there even when it is omitted from `mcp.json`.
 
 #### Popular MCP servers from [`modelcontextprotocol/servers`](https://github.com/modelcontextprotocol/servers)
 

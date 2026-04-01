@@ -21,11 +21,6 @@ Typical entry points:
 
 ---
 
-## Communication Rules
-
-- **Always reply in the same language as the person you are communicating with.** If an issue or comment is written in Chinese, reply in Chinese. If in English, reply in English. Match the language of the most recent message or the issue author.
-
----
 
 ## Access Token & Git Authentication
 

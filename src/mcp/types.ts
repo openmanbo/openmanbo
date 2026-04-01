@@ -98,9 +98,54 @@ export interface BuiltinQnaToolConfig {
   topics: QnaTopic[];
 }
 
+/**
+ * Configuration for the built-in self-reflection tool.
+ */
+export interface BuiltinReflectionToolConfig {
+  /** Whether the tool is enabled */
+  enabled?: boolean;
+  /** Tool name exposed to the model */
+  name?: string;
+  /** Tool description exposed to the model */
+  description?: string;
+  /** System prompt used for the reflection sub-call */
+  systemPrompt?: string;
+  /** Max input characters sent to the reflection sub-call */
+  maxInputChars?: number;
+}
+
+/**
+ * Configuration for the built-in context compression tool.
+ */
+export interface BuiltinContextCompressionToolConfig {
+  /** Whether the tool is enabled */
+  enabled?: boolean;
+  /** Tool name exposed to the model */
+  name?: string;
+  /** Tool description exposed to the model */
+  description?: string;
+  /** System prompt used for the internal compression sub-call */
+  systemPrompt?: string;
+  /** Max input characters sent to the compression sub-call */
+  maxInputChars?: number;
+}
+
 export interface BuiltinToolsConfig {
   exec?: BuiltinExecToolConfig;
   qna?: BuiltinQnaToolConfig;
+  reflection?: BuiltinReflectionToolConfig;
+  compression?: BuiltinContextCompressionToolConfig;
+}
+
+/**
+ * Describes a resource exposed by an MCP server.
+ */
+export interface McpResource {
+  server: string;
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
 }
 
 /**

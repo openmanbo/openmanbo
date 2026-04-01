@@ -27,6 +27,21 @@ RUN git config --system init.defaultBranch main \
 # ── Claude Code CLI ───────────────────────────────────────────────
 RUN npm install -g @anthropic-ai/claude-code
 
+# ── File Browser ──────────────────────────────────────────────────
+ARG FILEBROWSER_VERSION=2.62.2
+ARG TARGETARCH
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      amd64) fb_arch='amd64' ;; \
+      arm64) fb_arch='arm64' ;; \
+      *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://github.com/filebrowser/filebrowser/releases/download/v${FILEBROWSER_VERSION}/linux-${fb_arch}-filebrowser.tar.gz" \
+      -o /tmp/filebrowser.tar.gz; \
+    tar -xzf /tmp/filebrowser.tar.gz -C /usr/local/bin filebrowser; \
+    chmod +x /usr/local/bin/filebrowser; \
+    rm -f /tmp/filebrowser.tar.gz
+
 # ── App dependencies ──────────────────────────────────────────────
 FROM base AS deps
 WORKDIR /app
@@ -49,13 +64,21 @@ COPY --from=build --chown=node:node /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=build --chown=node:node /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
+COPY --chmod=755 docker/forgejo-manbo/entrypoint.sh /usr/local/bin/openmanbo-manbo-entrypoint
 
 # Workspace directory for cloning repos (writable by node user)
-RUN mkdir -p /workspace && chown node:node /workspace
+RUN mkdir -p /workspace /workspace/.filebrowser && chown -R node:node /workspace
 ENV OPENMANBO_WORKSPACE_DIR=/workspace
 
 USER node
 
-ENV OPENMANBO_LOG_LEVEL=debug
-ENTRYPOINT ["node", "dist/cli/index.js", "daemon"]
+ENV OPENMANBO_LOG_LEVEL=debug \
+  OPENMANBO_FILEBROWSER_ROOT=/app/.openmanbo \
+  OPENMANBO_FILEBROWSER_ADDRESS=0.0.0.0 \
+  OPENMANBO_FILEBROWSER_PORT=8080 \
+  OPENMANBO_FILEBROWSER_DATABASE=/workspace/.filebrowser/filebrowser.db
+
+EXPOSE 8080
+
+ENTRYPOINT ["openmanbo-manbo-entrypoint"]
 CMD ["--forgejo-poll-interval", "1m"]

@@ -13,10 +13,13 @@ const BATCH_CHAR_THRESHOLD = 50;
 const BATCH_TIME_THRESHOLD_MS = 50;
 const SCROLL_STEP_LINES = 3;
 
-const BASE_FOOTER_LINES = 3; // last prompt + status + input
+const SYMBOL_WIDTH = 3; // symbol char + 2 spaces
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+const BASE_FOOTER_LINES = 3; // separator + status + input
 const MAX_COMPLETION_LINES = 8;
 
-type MessageRole = "system" | "user" | "assistant" | "hint" | "error" | "tool";
+type MessageRole = "system" | "user" | "assistant" | "hint" | "error" | "tool-running" | "tool-done" | "tool-error";
 
 interface MessageItem {
   id: number;
@@ -27,6 +30,7 @@ interface MessageItem {
 interface RenderLine {
   key: string;
   role: MessageRole;
+  isFirst: boolean;
   text: string;
 }
 
@@ -127,22 +131,32 @@ function wrapLineByWidth(line: string, width: number): string[] {
 }
 
 function messageToRenderLines(item: MessageItem, width: number): RenderLine[] {
-  const prefix = `${labelForRole(item.role)} `;
-  const prefixWidth = stringDisplayWidth(prefix);
-  const contentWidth = Math.max(8, width - prefixWidth);
-  const continuationPrefix = " ".repeat(Math.max(0, prefix.length));
+  const contentWidth = Math.max(8, width - SYMBOL_WIDTH);
+  const logicalLines = (item.text || "…").split(/\r?\n/);
+  const result: RenderLine[] = [];
 
-  const logicalLines = (item.text || "...").split(/\r?\n/);
-  const wrappedContent: string[] = [];
   for (const logical of logicalLines) {
-    wrappedContent.push(...wrapLineByWidth(logical, contentWidth));
+    for (const line of wrapLineByWidth(logical, contentWidth)) {
+      result.push({
+        key: `${item.id}-${result.length}`,
+        role: item.role,
+        isFirst: result.length === 0,
+        text: line,
+      });
+    }
   }
 
-  return wrappedContent.map((line, idx) => ({
-    key: `${item.id}-${idx}`,
-    role: item.role,
-    text: `${idx === 0 ? prefix : continuationPrefix}${line}`,
-  }));
+  // Add a blank separator line after user and assistant messages for readability
+  if (item.role === "user" || item.role === "assistant") {
+    result.push({
+      key: `${item.id}-blank`,
+      role: item.role,
+      isFirst: false,
+      text: "",
+    });
+  }
+
+  return result;
 }
 
 function sanitizeTextInput(value: string): string {
@@ -237,7 +251,7 @@ function TuiApp(props: TuiAppProps): JSX.Element {
     {
       id: messageIdRef.current++,
       role: "system",
-      text: "Manbo TUI mode. Enter to send, Ctrl+R reset, Ctrl+L clear, /exit to quit.",
+      text: "OpenManbo ready. Type a message or /help for shortcuts.",
     },
   ]);
 
@@ -246,11 +260,17 @@ function TuiApp(props: TuiAppProps): JSX.Element {
 
   const [inputValue, setInputValue] = useState("");
   const [inputInstanceKey, setInputInstanceKey] = useState(0);
-  const [lastPrompt, setLastPrompt] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const isRunningRef = useRef(false);
+  const [spinnerFrame, setSpinnerFrame] = useState(0);
   const [completionIndex, setCompletionIndex] = useState(0);
   const [scrollOffsetLines, setScrollOffsetLines] = useState(0);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const id = setInterval(() => setSpinnerFrame((f: number) => (f + 1) % SPINNER_FRAMES.length), 80);
+    return () => clearInterval(id);
+  }, [isRunning]);
 
   const appendMessage = useCallback((role: MessageRole, text: string): number => {
     const id = messageIdRef.current++;
@@ -374,7 +394,7 @@ function TuiApp(props: TuiAppProps): JSX.Element {
   }, [exit, props]);
 
   const completionBlockLines = hasCompletion
-    ? 1 + visibleCompletionItems.length + (selectedHint ? 1 : 0)
+    ? visibleCompletionItems.length + (selectedHint ? 1 : 0)
     : 0;
 
   const footerLines = BASE_FOOTER_LINES + completionBlockLines;
@@ -435,7 +455,6 @@ function TuiApp(props: TuiAppProps): JSX.Element {
         }
 
         appendMessage("user", userInput);
-        setLastPrompt(userInput);
         setScrollOffsetLines(0);
 
         const routeResult = routeSkills({ message: userInput, skills });
@@ -464,15 +483,15 @@ function TuiApp(props: TuiAppProps): JSX.Element {
           agent.setEventHandlers({
             onToolCallStart: (payload) => {
               startNewAssistantSegment();
-              appendMessage("tool", `Tool calling: ${payload.name} args=${summarizeValue(payload.args)}`);
+              appendMessage("tool-running", `${payload.name}  →  ${summarizeValue(payload.args)}`);
             },
             onToolCallSuccess: (payload) => {
               startNewAssistantSegment();
-              appendMessage("tool", `Tool done: ${payload.name} result=${summarizeText(payload.result)}`);
+              appendMessage("tool-done", `${payload.name}  →  ${summarizeText(payload.result)}`);
             },
             onToolCallError: (payload) => {
               startNewAssistantSegment();
-              appendMessage("tool", `Tool error: ${payload.name} error=${summarizeText(payload.error)}`);
+              appendMessage("tool-error", `${payload.name}  →  ${summarizeText(payload.error)}`);
             },
           });
 
@@ -620,19 +639,39 @@ function TuiApp(props: TuiAppProps): JSX.Element {
 
   return (
     <Box flexDirection="column" width={terminalSize.columns} height={terminalSize.rows}>
+      {/* Messages viewport */}
       <Box flexDirection="column" height={messageViewportLines}>
-        {visibleLines.map((line) => (
-          <Text key={line.key} color={colorForRole(line.role)}>
-            {line.text}
-          </Text>
-        ))}
+        {visibleLines.map((line) => {
+          const style = getLineStyle(line.role, line.isFirst);
+          return (
+            <Box key={line.key}>
+              <Text color={style.symbolColor}>{style.symbol}</Text>
+              <Text color={style.contentColor}>{line.text}</Text>
+            </Box>
+          );
+        })}
       </Box>
 
+      {/* Footer */}
       <Box flexDirection="column" height={footerLines}>
-        <Text color="gray">{truncateToWidth(`Last prompt: ${lastPrompt || "(none yet)"}`, textWidth)}</Text>
-        <Text>{isRunning ? "[running]" : "[idle]"}</Text>
+        {/* Horizontal separator */}
+        <Text color="gray">{"─".repeat(Math.max(0, textWidth))}</Text>
+
+        {/* Status: animated spinner when running, keyboard hints when idle */}
+        {isRunning ? (
+          <Box>
+            <Text color="green">{SPINNER_FRAMES[spinnerFrame]}  </Text>
+            <Text color="gray">Working…</Text>
+          </Box>
+        ) : (
+          <Text color="gray">
+            {truncateToWidth("  Ctrl+R reset  Ctrl+L clear  ↑↓ scroll  /help", textWidth)}
+          </Text>
+        )}
+
+        {/* Input prompt */}
         <Box>
-          <Text>You: </Text>
+          <Text color="green">❯  </Text>
           <TextInput
             key={inputInstanceKey}
             value={inputValue}
@@ -646,28 +685,27 @@ function TuiApp(props: TuiAppProps): JSX.Element {
           />
         </Box>
 
+        {/* Completion menu */}
         {hasCompletion ? (
           <Box flexDirection="column">
-            <Text color="gray">
-              {truncateToWidth(
-                `Completions (Tab to apply) ${completionWindowStart + 1}-${completionWindowEnd}/${completionItems.length}:`,
-                textWidth,
-              )}
-            </Text>
             {visibleCompletionItems.map((item, index) => {
               const absoluteIndex = completionWindowStart + index;
-              const suffix = commandHintMap.get(item)?.params ? ` ${commandHintMap.get(item)?.params}` : "";
-              const row = `${absoluteIndex === completionIndex ? ">" : " "} ${item}${suffix}`;
+              const hint = commandHintMap.get(item);
+              const isSelected = absoluteIndex === completionIndex;
+              const params = hint?.params ? `  ${hint.params}` : "";
               return (
-                <Text key={`${item}-${absoluteIndex}`} color={absoluteIndex === completionIndex ? "green" : "gray"}>
-                  {truncateToWidth(row, textWidth)}
-                </Text>
+                <Box key={`${item}-${absoluteIndex}`}>
+                  <Text color={isSelected ? "green" : "gray"}>{isSelected ? "▶ " : "  "}</Text>
+                  <Text color={isSelected ? "green" : "gray"}>
+                    {truncateToWidth(`${item}${params}`, textWidth - 2)}
+                  </Text>
+                </Box>
               );
             })}
             {selectedHint ? (
               <Text color="gray">
                 {truncateToWidth(
-                  `Params: ${selectedHint.command}${selectedHint.params ? ` ${selectedHint.params}` : " (no args)"} | ${selectedHint.note}`,
+                  `   ${selectedHint.command}${selectedHint.params ? ` ${selectedHint.params}` : " (no args)"}   ${selectedHint.note}`,
                   textWidth,
                 )}
               </Text>
@@ -698,20 +736,37 @@ function summarizeValue(value: unknown): string {
   }
 }
 
-function labelForRole(role: MessageRole): string {
-  if (role === "user") return "You:";
-  if (role === "assistant") return "Manbo:";
-  if (role === "system") return "System:";
-  if (role === "hint") return "Hint:";
-  if (role === "tool") return "Tool:";
-  return "Error:";
+function getLineStyle(
+  role: MessageRole,
+  isFirst: boolean,
+): { symbol: string; symbolColor: string; contentColor: string } {
+  const INDENT = "   ";
+  if (!isFirst) {
+    return { symbol: INDENT, symbolColor: "gray", contentColor: contentColorForRole(role) };
+  }
+  switch (role) {
+    case "user":         return { symbol: "❯  ", symbolColor: "green",  contentColor: "white"  };
+    case "assistant":    return { symbol: "◆  ", symbolColor: "green",  contentColor: "cyan"   };
+    case "tool-running": return { symbol: "⚙  ", symbolColor: "yellow", contentColor: "yellow" };
+    case "tool-done":    return { symbol: "✓  ", symbolColor: "gray",   contentColor: "gray"   };
+    case "tool-error":   return { symbol: "✗  ", symbolColor: "red",    contentColor: "red"    };
+    case "hint":         return { symbol: "ℹ  ", symbolColor: "blue",   contentColor: "blue"   };
+    case "error":        return { symbol: "✗  ", symbolColor: "red",    contentColor: "red"    };
+    case "system":       return { symbol: "◉  ", symbolColor: "gray",   contentColor: "gray"   };
+    default:             return { symbol: INDENT, symbolColor: "gray",  contentColor: "white"  };
+  }
 }
 
-function colorForRole(role: MessageRole): "white" | "cyan" | "gray" | "yellow" | "red" {
-  if (role === "assistant") return "cyan";
-  if (role === "system") return "gray";
-  if (role === "tool") return "yellow";
-  if (role === "hint") return "yellow";
-  if (role === "error") return "red";
-  return "white";
+function contentColorForRole(role: MessageRole): string {
+  switch (role) {
+    case "user":         return "white";
+    case "assistant":    return "cyan";
+    case "tool-running": return "yellow";
+    case "tool-done":    return "gray";
+    case "tool-error":   return "red";
+    case "hint":         return "blue";
+    case "error":        return "red";
+    case "system":       return "gray";
+    default:             return "white";
+  }
 }

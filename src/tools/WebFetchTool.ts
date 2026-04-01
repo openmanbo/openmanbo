@@ -104,23 +104,58 @@ export class WebFetchTool implements Tool {
 /**
  * Strip HTML to plain text for display purposes.
  * Not used for rendering — only for returning text to the model.
+ * Uses a character-by-character parser to avoid regex limitations.
  */
 function stripHtml(html: string): string {
-  let text = html;
+  const result: string[] = [];
+  let inTag = false;
+  let inScript = false;
+  let inStyle = false;
+  let tagNameBuf = "";
+  let collectingTagName = false;
 
-  // Remove script and style blocks (loop to handle nested/malformed tags)
-  for (let i = 0; i < 5; i++) {
-    const prev = text;
-    text = text.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
-    text = text.replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, "");
-    if (text === prev) break;
+  for (let i = 0; i < html.length; i++) {
+    const ch = html[i];
+
+    if (ch === "<") {
+      inTag = true;
+      tagNameBuf = "";
+      collectingTagName = true;
+      continue;
+    }
+
+    if (ch === ">" && inTag) {
+      inTag = false;
+      collectingTagName = false;
+      const lower = tagNameBuf.toLowerCase().trim();
+
+      if (lower === "script" || lower.startsWith("script ") || lower.startsWith("script\t")) {
+        inScript = true;
+      } else if (lower === "/script") {
+        inScript = false;
+      } else if (lower === "style" || lower.startsWith("style ") || lower.startsWith("style\t")) {
+        inStyle = true;
+      } else if (lower === "/style") {
+        inStyle = false;
+      }
+
+      result.push(" ");
+      continue;
+    }
+
+    if (inTag && collectingTagName) {
+      if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === "/") {
+        collectingTagName = false;
+      }
+      tagNameBuf += ch;
+      continue;
+    }
+
+    if (inTag) continue;
+    if (inScript || inStyle) continue;
+
+    result.push(ch);
   }
 
-  // Remove all remaining HTML tags
-  text = text.replace(/<[^>]+>/g, " ");
-
-  // Collapse whitespace
-  text = text.replace(/\s+/g, " ");
-
-  return text.trim();
+  return result.join("").replace(/\s+/g, " ").trim();
 }

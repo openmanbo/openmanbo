@@ -327,52 +327,7 @@ program
   .option("--model <model>", "Model name to use")
   .option("--data-dir <path>", "Path to the .openmanbo storage directory")
   .action(async (opts) => {
-    const config = loadConfig({
-      apiKey: opts.apiKey,
-      apiBaseUrl: opts.apiBaseUrl,
-      model: opts.model,
-      dataDir: opts.dataDir,
-    });
-
-    const dataDir = resolveDataDir(config.dataDir);
-    const cwd = process.cwd();
-    const [identity, skills, mcpConfig, context] = await Promise.all([
-      readIdentity(dataDir),
-      readSkills(dataDir),
-      readMcpConfig(dataDir),
-      getFullContext(cwd),
-    ]);
-
-    const mcp = new McpManager();
-    if (mcpConfig) {
-      await mcp.connect(mcpConfig);
-    }
-
-    const builtinTools = createBuiltinTools({ cwd });
-    const toolPool = new ToolPool(builtinTools);
-    if (mcp.isActive) {
-      toolPool.setMcpTools(mcp.tools, mcp.call.bind(mcp));
-    }
-
-    const systemPrompt = buildSystemPrompt({
-      identity,
-      skills,
-      context,
-      toolNames: toolPool.toolNames,
-    });
-
-    const client = createLLMClient(config);
-    const agent = new Agent({
-      client,
-      model: config.model,
-      systemPrompt,
-      ...(toolPool.tools.length
-        ? {
-            mcpTools: toolPool.tools,
-            mcpToolExecutor: toolPool.execute.bind(toolPool),
-          }
-        : {}),
-    });
+    const { agent, mcp, skills } = await bootstrap(opts);
 
     try {
       await runTuiSession({

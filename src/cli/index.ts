@@ -127,11 +127,13 @@ async function bootstrap(opts: {
 
   // Set up subagent system
   const taskManager = new TaskManager();
+  const SUBAGENT_SYSTEM_PROMPT =
+    "You are a sub-agent. Complete the task described below, then return a concise summary of what you did and the result.";
   const agentFactory = async (prompt: string) => {
     const subAgent = new Agent({
       client,
       model: config.model,
-      systemPrompt: "You are a sub-agent. Complete the task described below, then return a concise summary of what you did and the result.",
+      systemPrompt: SUBAGENT_SYSTEM_PROMPT,
       tools: toolPool.tools,
       toolExecutor: toolPool.execute.bind(toolPool),
     });

@@ -44,6 +44,7 @@ import {
 import { createBuiltinTools, ToolPool } from "../tools/index.js";
 import { getFullContext } from "../context/index.js";
 import { CommandRegistry } from "../commands/index.js";
+import { getCompactPrompt } from "../compact/index.js";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { resolve as resolvePath } from "node:path";
@@ -205,6 +206,12 @@ program
           cwd: process.cwd(),
           resetAgent: () => agent.reset(),
           getHistoryLength: () => agent.getHistory().length,
+          getMessages: () => agent.getMessages(),
+          replaceMessages: (msgs) => agent.replaceMessages(msgs),
+          compactConversation: async (customInstructions?: string) => {
+            const prompt = getCompactPrompt(customInstructions);
+            return agent.run(prompt);
+          },
           toolNames: toolPool.toolNames,
           model,
         });

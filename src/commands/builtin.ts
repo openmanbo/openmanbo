@@ -5,8 +5,15 @@
  * /memory, /context, /tools, /reset, /exit.
  */
 
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { CommandDefinition, CommandContext, CommandResult } from "./types.js";
 import { getFullContext, formatContextSections } from "../context/index.js";
+import {
+  getCompactPrompt,
+  formatCompactSummary,
+  getCompactUserSummaryMessage,
+  microCompact,
+} from "../compact/index.js";
 
 /* ────────────────────────────────────────────────────────────────────
  * /help – List available commands
@@ -91,13 +98,52 @@ const contextCommand: CommandDefinition = {
 
 const compactCommand: CommandDefinition = {
   name: "compact",
-  description: "Compress conversation history to save context",
+  description: "Compress conversation context with structured summary",
   aliases: ["c"],
-  execute(_args, ctx) {
+  async execute(args, ctx) {
     const historyLength = ctx.getHistoryLength();
-    ctx.resetAgent();
+    if (historyLength < 3) {
+      return {
+        output: "Not enough conversation history to compact (need at least 3 messages).",
+        suppressAgent: true,
+      };
+    }
+
+    // 1. Run micro-compact first to trim old tool results
+    const messages = ctx.getMessages();
+    const trimmed = microCompact(messages);
+    if (trimmed !== messages) {
+      ctx.replaceMessages(trimmed);
+    }
+
+    // 2. Run the full structured compact summarization
+    const customInstructions = args.trim() || undefined;
+    let summary: string;
+    try {
+      summary = await ctx.compactConversation(customInstructions);
+    } catch (err) {
+      return {
+        output: `Compact failed: ${String(err)}`,
+        suppressAgent: true,
+      };
+    }
+
+    // 3. Format the summary (strip analysis scratchpad)
+    const formatted = formatCompactSummary(summary);
+
+    // 4. Replace messages with compact boundary + summary
+    const compactBoundary = getCompactUserSummaryMessage(formatted);
+    const newMessages: ChatCompletionMessageParam[] = [
+      { role: "user", content: compactBoundary },
+      {
+        role: "assistant",
+        content: "Understood. I have the full context from the summary above and will continue from where we left off.",
+      },
+    ];
+    ctx.replaceMessages(newMessages);
+
     return {
-      output: `Conversation compacted. Cleared ${historyLength} messages from history.\nThe agent will start fresh but retains its system prompt and tools.`,
+      output: `Conversation compacted: ${historyLength} messages → 2 messages (compact boundary + acknowledgment).`,
       suppressAgent: true,
     };
   },

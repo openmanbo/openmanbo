@@ -14,6 +14,8 @@ export interface CommandResult {
   suppressAgent?: boolean;
 }
 
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+
 export interface CommandContext {
   /** Current working directory */
   cwd: string;
@@ -21,6 +23,12 @@ export interface CommandContext {
   resetAgent: () => void;
   /** Get agent conversation history length */
   getHistoryLength: () => number;
+  /** Get the agent's messages (direct reference) */
+  getMessages: () => ChatCompletionMessageParam[];
+  /** Replace the agent's message history */
+  replaceMessages: (messages: ChatCompletionMessageParam[]) => void;
+  /** Run a compact summarization and return the summary text */
+  compactConversation: (customInstructions?: string) => Promise<string>;
   /** Available tool names */
   toolNames: string[];
   /** Model name */

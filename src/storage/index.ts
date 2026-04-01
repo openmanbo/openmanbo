@@ -24,6 +24,16 @@ interface McpTemplateContext {
 interface SkillFrontmatter {
   name?: string;
   description?: string;
+  "when_to_use"?: string;
+  "allowed-tools"?: string;
+  "argument-hint"?: string;
+  arguments?: string;
+  model?: string;
+  context?: string;
+  paths?: string;
+  version?: string;
+  "user-invocable"?: string;
+  "disable-model-invocation"?: string;
 }
 
 const SKILL_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
@@ -203,7 +213,55 @@ export async function readIdentity(
 }
 
 /**
+ * Parse a comma-separated or YAML-style list string into an array of trimmed strings.
+ */
+function parseListValue(value: string | undefined): string[] | undefined {
+  if (!value) return undefined;
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Build a SkillDefinition from parsed frontmatter, content, and source path.
+ */
+function buildSkillDefinition(
+  frontmatter: SkillFrontmatter,
+  content: string,
+  relativePath: string,
+  sourcePrefix: string,
+  loadedFrom: "skills" | "mcp" | "bundled",
+  skillRoot?: string,
+): SkillDefinition {
+  const contextValue = frontmatter.context?.trim();
+  return {
+    name: frontmatter.name?.trim() || inferSkillName(relativePath, content),
+    description: frontmatter.description?.trim() || undefined,
+    content,
+    source: `${sourcePrefix}/${relativePath}`,
+    whenToUse: frontmatter["when_to_use"]?.trim() || undefined,
+    allowedTools: parseListValue(frontmatter["allowed-tools"]),
+    argumentHint: frontmatter["argument-hint"]?.trim() || undefined,
+    arguments: parseListValue(frontmatter.arguments),
+    model: frontmatter.model?.trim() || undefined,
+    context: contextValue === "inline" || contextValue === "fork" ? contextValue : undefined,
+    paths: parseListValue(frontmatter.paths),
+    version: frontmatter.version?.trim() || undefined,
+    userInvocable: frontmatter["user-invocable"] !== undefined
+      ? frontmatter["user-invocable"].toLowerCase() !== "false"
+      : undefined,
+    disableModelInvocation: frontmatter["disable-model-invocation"] !== undefined
+      ? frontmatter["disable-model-invocation"].toLowerCase() !== "false"
+      : undefined,
+    skillRoot,
+    loadedFrom,
+  };
+}
+
+/**
  * Read skill documents from the .openmanbo/skills directory.
+ * Supports both individual markdown files and directory-based skills (containing SKILL.md).
  * Returns all non-empty markdown files in lexical order.
  */
 export async function readSkills(dataDir: string): Promise<SkillDefinition[]> {
@@ -219,13 +277,18 @@ export async function readSkills(dataDir: string): Promise<SkillDefinition[]> {
           return undefined;
         }
 
+        const isDirectorySkill = path.basename(skillPath).toUpperCase() === "SKILL.MD";
         const relativePath = path.relative(skillsDir, skillPath).replace(/\\/g, "/");
-        return {
-          name: parsedSkill.frontmatter.name?.trim() || inferSkillName(relativePath, parsedSkill.content),
-          description: parsedSkill.frontmatter.description?.trim() || undefined,
-          content: parsedSkill.content,
-          source: `skills/${relativePath}`,
-        } satisfies SkillDefinition;
+        const skillRoot = isDirectorySkill ? path.dirname(skillPath) : undefined;
+
+        return buildSkillDefinition(
+          parsedSkill.frontmatter,
+          parsedSkill.content,
+          relativePath,
+          "skills",
+          "skills",
+          skillRoot,
+        );
       }),
     );
 
@@ -246,6 +309,16 @@ async function collectSkillFiles(
       .map(async (entry) => {
         const fullPath = path.join(directory, entry.name);
         if (entry.isDirectory()) {
+          // Check for SKILL.md directory-based format
+          const skillMdPath = path.join(fullPath, "SKILL.md");
+          try {
+            const stat = await fs.stat(skillMdPath);
+            if (stat.isFile()) {
+              return [skillMdPath];
+            }
+          } catch {
+            // No SKILL.md — recurse into directory normally
+          }
           return collectSkillFiles(fullPath, rootDirectory);
         }
 
@@ -317,14 +390,44 @@ function normalizeSkillFrontmatterKey(
   key: string,
 ): keyof SkillFrontmatter | undefined {
   const normalized = key.toLowerCase();
-  if (normalized === "name") {
-    return "name";
+  switch (normalized) {
+    case "name":
+      return "name";
+    case "description":
+      return "description";
+    case "when_to_use":
+    case "whentouse":
+    case "when-to-use":
+      return "when_to_use";
+    case "allowed-tools":
+    case "allowedtools":
+    case "allowed_tools":
+      return "allowed-tools";
+    case "argument-hint":
+    case "argumenthint":
+    case "argument_hint":
+      return "argument-hint";
+    case "arguments":
+      return "arguments";
+    case "model":
+      return "model";
+    case "context":
+      return "context";
+    case "paths":
+      return "paths";
+    case "version":
+      return "version";
+    case "user-invocable":
+    case "userinvocable":
+    case "user_invocable":
+      return "user-invocable";
+    case "disable-model-invocation":
+    case "disablemodelinvocation":
+    case "disable_model_invocation":
+      return "disable-model-invocation";
+    default:
+      return undefined;
   }
-  if (normalized === "description") {
-    return "description";
-  }
-
-  return undefined;
 }
 
 function stripYamlQuotes(value: string): string {
@@ -436,4 +539,60 @@ export function injectQnaTopics(
       },
     },
   };
+}
+
+/**
+ * Read user-level skills from ~/.openmanbo/skills/.
+ * These are skills shared across all projects for the current user.
+ */
+export async function readUserSkills(): Promise<SkillDefinition[]> {
+  const homeDir = os.homedir();
+  const userSkillsDir = path.join(homeDir, ".openmanbo", "skills");
+
+  try {
+    const skillPaths = await collectSkillFiles(userSkillsDir, userSkillsDir);
+    const skills: Array<SkillDefinition | undefined> = await Promise.all(
+      skillPaths.map(async (skillPath) => {
+        const rawContent = await fs.readFile(skillPath, "utf-8");
+        const parsedSkill = parseSkillFile(rawContent);
+        if (!parsedSkill.content) {
+          return undefined;
+        }
+
+        const isDirectorySkill = path.basename(skillPath).toUpperCase() === "SKILL.MD";
+        const relativePath = path.relative(userSkillsDir, skillPath).replace(/\\/g, "/");
+        const skillRoot = isDirectorySkill ? path.dirname(skillPath) : undefined;
+
+        return buildSkillDefinition(
+          parsedSkill.frontmatter,
+          parsedSkill.content,
+          relativePath,
+          "user-skills",
+          "skills",
+          skillRoot,
+        );
+      }),
+    );
+
+    return skills.filter((skill): skill is SkillDefinition => skill !== undefined);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Read `.mcp.json` from a project root directory for Claude Code compatible MCP config.
+ * Returns the parsed and normalized config if the file exists, or undefined otherwise.
+ */
+export async function readProjectMcpConfig(
+  cwd: string,
+): Promise<McpConfig | undefined> {
+  const mcpJsonPath = path.join(cwd, ".mcp.json");
+  try {
+    const content = await fs.readFile(mcpJsonPath, "utf-8");
+    const dataDir = path.join(cwd, DEFAULT_DATA_DIR_NAME);
+    return normalizeMcpConfig(JSON.parse(content) as McpConfig, dataDir);
+  } catch {
+    return undefined;
+  }
 }

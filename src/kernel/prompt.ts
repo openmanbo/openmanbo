@@ -6,6 +6,19 @@ export interface SkillDefinition {
   description?: string;
   content: string;
   source: string;
+  // Claude Code compatible fields
+  whenToUse?: string;
+  allowedTools?: string[];
+  argumentHint?: string;
+  arguments?: string[];
+  model?: string;
+  context?: "inline" | "fork";
+  paths?: string[];
+  version?: string;
+  userInvocable?: boolean;
+  disableModelInvocation?: boolean;
+  skillRoot?: string;
+  loadedFrom?: "skills" | "mcp" | "bundled";
 }
 
 export const DEFAULT_SYSTEM_PROMPT = `You are Manbo, an intelligent AI coding assistant.
@@ -25,7 +38,9 @@ You are pair programming with a developer. You have access to tools for reading,
 - If you're unsure about something, say so rather than guessing.`;
 
 export function buildSkillCatalogPrompt(skills?: SkillDefinition[]): string | undefined {
-  const visibleSkills = skills?.filter((skill) => skill.description?.trim()) ?? [];
+  const visibleSkills = skills?.filter((skill) =>
+    skill.description?.trim() && skill.userInvocable !== false && skill.disableModelInvocation !== true
+  ) ?? [];
 
   if (!visibleSkills.length) {
     return undefined;
@@ -34,7 +49,12 @@ export function buildSkillCatalogPrompt(skills?: SkillDefinition[]): string | un
   const skillLines = visibleSkills
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name))
-    .map((skill) => `- ${skill.name}: ${skill.description?.trim()}`);
+    .map((skill) => {
+      let line = `- ${skill.name}: ${skill.description?.trim()}`;
+      if (skill.whenToUse) line += ` - ${skill.whenToUse.trim()}`;
+      if (skill.argumentHint) line += ` (${skill.argumentHint})`;
+      return line;
+    });
 
   return [
     "## Available Skills",

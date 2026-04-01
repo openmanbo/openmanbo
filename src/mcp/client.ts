@@ -23,10 +23,11 @@ import {
 /**
  * Normalize a server name for use in MCP tool naming.
  * Replaces dots, spaces, and other invalid chars with underscores.
- * Pattern: ^[a-zA-Z0-9_-]{1,64}$
+ * Ensures result is 1-64 chars matching: ^[a-zA-Z0-9_-]{1,64}$
  */
 function normalizeServerName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+  const normalized = name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+  return normalized || "_";
 }
 
 /**
@@ -38,14 +39,22 @@ function buildMcpToolName(serverName: string, toolName: string): string {
 
 /**
  * Parse MCP tool name back to server and tool components.
+ * Expects format: mcp__<serverName>__<toolName>
+ * The server name is the segment between the first and second double-underscore.
  * Returns undefined if the name does not match the mcp__ prefix pattern.
  */
 export function parseMcpToolName(
   fullName: string,
 ): { serverName: string; toolName: string } | undefined {
-  const match = fullName.match(/^mcp__([^_](?:[^_]*(?:_[^_][^_]*)*)?)__(.+)$/);
-  if (!match) return undefined;
-  return { serverName: match[1], toolName: match[2] };
+  if (!fullName.startsWith("mcp__")) return undefined;
+  // Find the second occurrence of "__" after the "mcp__" prefix
+  const rest = fullName.slice(5); // strip "mcp__"
+  const separatorIdx = rest.indexOf("__");
+  if (separatorIdx <= 0) return undefined;
+  const serverName = rest.slice(0, separatorIdx);
+  const toolName = rest.slice(separatorIdx + 2);
+  if (!toolName) return undefined;
+  return { serverName, toolName };
 }
 
 /* ────────────────────────────────────────────────────────────────────

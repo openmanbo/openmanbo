@@ -596,3 +596,19 @@ export async function readProjectMcpConfig(
     return undefined;
   }
 }
+
+/**
+ * Read user-level MCP config from `~/.openmanbo/mcp.json`.
+ * Returns the parsed and normalized config if the file exists, or undefined otherwise.
+ */
+export async function readUserMcpConfig(): Promise<McpConfig | undefined> {
+  const homeDir = os.homedir();
+  const userDataDir = path.join(homeDir, DEFAULT_DATA_DIR_NAME);
+  const mcpJsonPath = path.join(userDataDir, "mcp.json");
+  try {
+    const content = await fs.readFile(mcpJsonPath, "utf-8");
+    return normalizeMcpConfig(JSON.parse(content) as McpConfig, userDataDir);
+  } catch {
+    return undefined;
+  }
+}

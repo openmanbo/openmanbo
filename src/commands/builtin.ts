@@ -195,6 +195,50 @@ const memoryCommand: CommandDefinition = {
 };
 
 /* ────────────────────────────────────────────────────────────────────
+ * /mcp – Manage MCP server connections
+ * ──────────────────────────────────────────────────────────────────── */
+
+const mcpCommand: CommandDefinition = {
+  name: "mcp",
+  description: "Manage MCP server connections",
+  execute(args, ctx) {
+    const parts = args.trim().split(/\s+/);
+    const sub = parts[0] ?? "";
+    const target = parts[1] ?? "";
+
+    if (!ctx.mcpStatus) {
+      return { output: "MCP is not active.", suppressAgent: true };
+    }
+
+    if (sub === "enable" && target) {
+      if (ctx.mcpEnable) ctx.mcpEnable(target);
+      return { output: `MCP server "${target}" enabled.`, suppressAgent: true };
+    }
+
+    if (sub === "disable" && target) {
+      if (ctx.mcpDisable) ctx.mcpDisable(target);
+      return { output: `MCP server "${target}" disabled.`, suppressAgent: true };
+    }
+
+    // Default: show status
+    const status = ctx.mcpStatus();
+    if (!status.length) {
+      return { output: "No MCP servers connected.", suppressAgent: true };
+    }
+    const lines = [
+      "## MCP Servers\n",
+      ...status.map((s) => {
+        const state = s.enabled ? "✅ enabled" : "❌ disabled";
+        return `  • ${s.name} — ${state} (${s.toolCount} tools)`;
+      }),
+      "",
+      "Use /mcp enable <server> or /mcp disable <server> to toggle.",
+    ];
+    return { output: lines.join("\n"), suppressAgent: true };
+  },
+};
+
+/* ────────────────────────────────────────────────────────────────────
  * Registry
  * ──────────────────────────────────────────────────────────────────── */
 
@@ -206,6 +250,7 @@ const allCommands: CommandDefinition[] = [
   compactCommand,
   resetCommand,
   memoryCommand,
+  mcpCommand,
   exitCommand,
 ];
 

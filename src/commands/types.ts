@@ -33,6 +33,12 @@ export interface CommandContext {
   toolNames: string[];
   /** Model name */
   model: string;
+  /** MCP server status (optional – only present when MCP is active) */
+  mcpStatus?: () => Array<{ name: string; enabled: boolean; toolCount: number }>;
+  /** Enable an MCP server by name */
+  mcpEnable?: (name: string) => void;
+  /** Disable an MCP server by name */
+  mcpDisable?: (name: string) => void;
 }
 
 export interface CommandDefinition {

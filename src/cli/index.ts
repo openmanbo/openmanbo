@@ -29,8 +29,11 @@ import {
   readSkills,
   readQnaTopics,
   injectQnaTopics,
+  readProjectMcpConfig,
+  readUserMcpConfig,
 } from "../storage/index.js";
-import { McpManager } from "../mcp/index.js";
+import { McpManager, ListMcpResourcesTool, ReadMcpResourceTool } from "../mcp/index.js";
+import type { McpConfig } from "../mcp/index.js";
 import {
   LifecycleManager,
   Scheduler,
@@ -98,23 +101,41 @@ async function bootstrap(opts: {
   const dataDir = resolveDataDir(config.dataDir);
 
   // Load everything in parallel
-  const [identity, skills, mcpConfig, qnaTopics, context] = await Promise.all([
+  const [identity, skills, mcpConfig, qnaTopics, context, projectMcpConfig, userMcpConfig] = await Promise.all([
     readIdentity(dataDir),
     readSkills(dataDir),
     readMcpConfig(dataDir),
     readQnaTopics(dataDir),
     getFullContext(cwd),
+    readProjectMcpConfig(cwd),
+    readUserMcpConfig(),
   ]);
+
+  // Merge multi-scope MCP configs (data dir < user < project)
+  const mergedMcpServers = {
+    ...mcpConfig?.mcpServers,
+    ...userMcpConfig?.mcpServers,
+    ...projectMcpConfig?.mcpServers,
+  };
+  const mergedBuiltinTools = {
+    ...mcpConfig?.builtinTools,
+    ...userMcpConfig?.builtinTools,
+    ...projectMcpConfig?.builtinTools,
+  };
+  const combinedMcpConfig: McpConfig = {
+    mcpServers: Object.keys(mergedMcpServers).length ? mergedMcpServers : undefined,
+    builtinTools: Object.keys(mergedBuiltinTools).length ? mergedBuiltinTools : undefined,
+  };
 
   // Create built-in tools
   const builtinTools = createBuiltinTools({ cwd });
   const toolPool = new ToolPool(builtinTools);
 
-  // Connect MCP servers
+  // Connect MCP servers (merged multi-scope config)
   const mcp = new McpManager();
-  const mergedMcpConfig = injectQnaTopics(mcpConfig, qnaTopics);
-  if (mergedMcpConfig) {
-    await mcp.connect(mergedMcpConfig);
+  const finalMcpConfig = injectQnaTopics(combinedMcpConfig, qnaTopics);
+  if (finalMcpConfig) {
+    await mcp.connect(finalMcpConfig);
   }
 
   const client = createLLMClient(config);
@@ -123,6 +144,24 @@ async function bootstrap(opts: {
   // Add MCP tools to the pool (built-in tools take precedence)
   if (mcp.isActive) {
     toolPool.setMcpTools(mcp.tools, mcp.call.bind(mcp));
+    // Register MCP resource tools
+    toolPool.addTools([
+      new ListMcpResourcesTool(mcp),
+      new ReadMcpResourceTool(mcp),
+    ]);
+  }
+
+  // Load MCP skills (prompts from connected servers) and merge with file-based skills
+  let allSkills = skills;
+  if (mcp.isActive) {
+    try {
+      const mcpSkills = await mcp.listMcpSkills();
+      if (mcpSkills.length) {
+        allSkills = [...skills, ...mcpSkills];
+      }
+    } catch {
+      // MCP skills are optional – skip on error
+    }
   }
 
   // Set up subagent system
@@ -150,7 +189,7 @@ async function bootstrap(opts: {
 
   // Also add skill tool
   const skillToolConfig = withSkillTool({
-    skills,
+    skills: allSkills,
     tools: toolPool.tools,
     toolExecutor: toolPool.execute.bind(toolPool),
   });
@@ -158,7 +197,7 @@ async function bootstrap(opts: {
   // Build multi-part system prompt
   const systemPrompt = buildSystemPrompt({
     identity,
-    skills,
+    skills: allSkills,
     context,
     toolNames: toolPool.toolNames,
   });
@@ -171,7 +210,7 @@ async function bootstrap(opts: {
     toolExecutor: skillToolConfig.toolExecutor,
   });
 
-  return { agent, toolPool, mcp, skills, model: config.model };
+  return { agent, toolPool, mcp, skills: allSkills, model: config.model };
 }
 
 /* ────────────────────────────────────────────────────────────────────
@@ -244,6 +283,9 @@ program
           },
           toolNames: toolPool.toolNames,
           model,
+          mcpStatus: mcp.isActive ? () => mcp.getServerStatus() : undefined,
+          mcpEnable: mcp.isActive ? (name: string) => mcp.enableServer(name) : undefined,
+          mcpDisable: mcp.isActive ? (name: string) => mcp.disableServer(name) : undefined,
         });
 
         if (result) {

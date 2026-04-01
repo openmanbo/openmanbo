@@ -102,20 +102,25 @@ export class WebFetchTool implements Tool {
 }
 
 /**
- * Very simple HTML tag stripper.
- * For a real implementation, use a proper library like turndown.
+ * Strip HTML to plain text for display purposes.
+ * Not used for rendering — only for returning text to the model.
  */
 function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
+  let text = html;
+
+  // Remove script and style blocks (loop to handle nested/malformed tags)
+  for (let i = 0; i < 5; i++) {
+    const prev = text;
+    text = text.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
+    text = text.replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, "");
+    if (text === prev) break;
+  }
+
+  // Remove all remaining HTML tags
+  text = text.replace(/<[^>]+>/g, " ");
+
+  // Collapse whitespace
+  text = text.replace(/\s+/g, " ");
+
+  return text.trim();
 }

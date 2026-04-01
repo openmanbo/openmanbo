@@ -23,9 +23,9 @@ export interface TokenWarningState {
   /** Percentage of the context window remaining. */
   percentLeft: number;
   /** True when remaining context is below the warning threshold. */
-  isAboveWarningThreshold: boolean;
+  isBelowWarningThreshold: boolean;
   /** True when remaining context is below the auto-compact threshold. */
-  isAboveAutoCompactThreshold: boolean;
+  isBelowAutoCompactThreshold: boolean;
   /** True when there is essentially no room left for output. */
   isAtBlockingLimit: boolean;
 }
@@ -63,8 +63,8 @@ export function calculateTokenWarningState(
 
   return {
     percentLeft,
-    isAboveWarningThreshold: remaining < WARNING_THRESHOLD_BUFFER_TOKENS,
-    isAboveAutoCompactThreshold: remaining < AUTOCOMPACT_BUFFER_TOKENS,
+    isBelowWarningThreshold: remaining < WARNING_THRESHOLD_BUFFER_TOKENS,
+    isBelowAutoCompactThreshold: remaining < AUTOCOMPACT_BUFFER_TOKENS,
     isAtBlockingLimit: remaining <= 0,
   };
 }

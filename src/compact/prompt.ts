@@ -21,7 +21,7 @@ const DETAILED_ANALYSIS_INSTRUCTION = `Before providing your final summary, firs
 4. Note any patterns in errors encountered and how they were resolved
 5. Track the evolution of the approach (initial plan vs. what actually happened)
 6. Identify any implicit context that would be lost without careful preservation
-This analysis will be stripped from the final output, so be thorough and candid.`;
+The <analysis> block will be stripped from the summary before it is injected back into the conversation, so be thorough and candid.`;
 
 const BASE_COMPACT_PROMPT = `Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and any work that has been done to address them. This summary will replace the conversation history, so it must be comprehensive enough for the assistant to continue working seamlessly.
 

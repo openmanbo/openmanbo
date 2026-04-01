@@ -198,9 +198,6 @@ export class ToolPool {
  * used by the existing Agent.
  */
 function toolResultToOutput(result: ToolResult): ToolExecutionOutput {
-  if (result.isError) {
-    return result.content;
-  }
   return result.content;
 }
 

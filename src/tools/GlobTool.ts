@@ -119,8 +119,7 @@ async function walkDir(
   }
 
   for (const entry of entries) {
-    if (entry.name.startsWith(".") && IGNORED_DIRS.has(entry.name)) continue;
-    if (IGNORED_DIRS.has(entry.name)) continue;
+    if (entry.name.startsWith(".") || IGNORED_DIRS.has(entry.name)) continue;
 
     const fullPath = join(dir, entry.name);
 

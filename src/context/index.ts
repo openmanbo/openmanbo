@@ -26,7 +26,7 @@ export interface SystemContext {
   /** Git branch and working tree status */
   gitStatus?: string;
   /** Current date/time string */
-  currentDate: string;
+  currentDateTime: string;
   /** Working directory path */
   cwd: string;
 }
@@ -173,7 +173,7 @@ export async function getSystemContext(cwd: string): Promise<SystemContext> {
 
   return {
     gitStatus,
-    currentDate: new Date().toISOString(),
+    currentDateTime: new Date().toISOString(),
     cwd,
   };
 }
@@ -207,7 +207,7 @@ export function formatContextSections(context: FullContext): string[] {
   sections.push(`Working directory: ${context.system.cwd}`);
 
   // Current date
-  sections.push(`Current date: ${context.system.currentDate}`);
+  sections.push(`Current date: ${context.system.currentDateTime}`);
 
   // Git status
   if (context.system.gitStatus) {

@@ -1,5 +1,16 @@
 #!/usr/bin/env node
 
+/**
+ * OpenManbo CLI – Main entry point.
+ *
+ * Refactored to align with Claude Code's architecture:
+ * - Built-in tools (bash, file_read, file_edit, file_write, glob, grep, web_fetch)
+ * - Multi-part system prompt with context injection
+ * - Slash command system (/help, /compact, /status, /tools, /context, /memory)
+ * - OPENMANBO.md memory file discovery
+ * - ToolPool unifies built-in tools + MCP tools
+ */
+
 import { Command } from "commander";
 import { loadConfig } from "../config/env.js";
 import {
@@ -11,10 +22,28 @@ import {
   buildSkillRouteMessages,
 } from "../kernel/index.js";
 import { DiscordChannel } from "../channel/index.js";
-import { resolveDataDir, readIdentity, readMcpConfig, readSkills, readQnaTopics, injectQnaTopics } from "../storage/index.js";
+import {
+  resolveDataDir,
+  readIdentity,
+  readMcpConfig,
+  readSkills,
+  readQnaTopics,
+  injectQnaTopics,
+} from "../storage/index.js";
 import { McpManager } from "../mcp/index.js";
-import { LifecycleManager, Scheduler, AdminServer, type IpcMessage } from "../daemon/index.js";
-import { handleForgejoPoll, isForgejoProcessing } from "../trigger/index.js";
+import {
+  LifecycleManager,
+  Scheduler,
+  AdminServer,
+  type IpcMessage,
+} from "../daemon/index.js";
+import {
+  handleForgejoPoll,
+  isForgejoProcessing,
+} from "../trigger/index.js";
+import { createBuiltinTools, ToolPool } from "../tools/index.js";
+import { getFullContext } from "../context/index.js";
+import { CommandRegistry } from "../commands/index.js";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { resolve as resolvePath } from "node:path";
@@ -26,7 +55,98 @@ program
   .description("OpenManbo – An intelligent CLI agent powered by LLMs")
   .version("0.1.0");
 
-// ── chat command: one-shot prompt ──────────────────────────────────
+/* ────────────────────────────────────────────────────────────────────
+ * Shared helpers
+ * ──────────────────────────────────────────────────────────────────── */
+
+interface BootstrapResult {
+  agent: Agent;
+  toolPool: ToolPool;
+  mcp: McpManager;
+  skills: Awaited<ReturnType<typeof readSkills>>;
+  model: string;
+}
+
+/**
+ * Shared bootstrap logic for all commands that need an Agent.
+ * Creates built-in tools, connects MCP, builds system prompt with context.
+ */
+async function bootstrap(opts: {
+  apiKey?: string;
+  apiBaseUrl?: string;
+  model?: string;
+  dataDir?: string;
+  discordBotToken?: string;
+}): Promise<BootstrapResult> {
+  const config = loadConfig({
+    apiKey: opts.apiKey,
+    apiBaseUrl: opts.apiBaseUrl,
+    model: opts.model,
+    dataDir: opts.dataDir,
+    discordBotToken: opts.discordBotToken,
+  });
+
+  const cwd = process.cwd();
+  const dataDir = resolveDataDir(config.dataDir);
+
+  // Load everything in parallel
+  const [identity, skills, mcpConfig, qnaTopics, context] = await Promise.all([
+    readIdentity(dataDir),
+    readSkills(dataDir),
+    readMcpConfig(dataDir),
+    readQnaTopics(dataDir),
+    getFullContext(cwd),
+  ]);
+
+  // Create built-in tools
+  const builtinTools = createBuiltinTools({ cwd });
+  const toolPool = new ToolPool(builtinTools);
+
+  // Connect MCP servers
+  const mcp = new McpManager();
+  const mergedMcpConfig = injectQnaTopics(mcpConfig, qnaTopics);
+  if (mergedMcpConfig) {
+    await mcp.connect(mergedMcpConfig);
+  }
+
+  const client = createLLMClient(config);
+  mcp.configureQna(client, config.model);
+
+  // Add MCP tools to the pool (built-in tools take precedence)
+  if (mcp.isActive) {
+    toolPool.setMcpTools(mcp.tools, mcp.call.bind(mcp));
+  }
+
+  // Also add skill tool
+  const skillToolConfig = withSkillTool({
+    skills,
+    tools: toolPool.tools,
+    toolExecutor: toolPool.execute.bind(toolPool),
+  });
+
+  // Build multi-part system prompt
+  const systemPrompt = buildSystemPrompt({
+    identity,
+    skills,
+    context,
+    toolNames: toolPool.toolNames,
+  });
+
+  const agent = new Agent({
+    client,
+    model: config.model,
+    systemPrompt,
+    tools: skillToolConfig.tools,
+    toolExecutor: skillToolConfig.toolExecutor,
+  });
+
+  return { agent, toolPool, mcp, skills, model: config.model };
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * chat command: one-shot prompt
+ * ──────────────────────────────────────────────────────────────────── */
+
 program
   .command("chat")
   .description("Send a single prompt and get a streamed response")
@@ -36,51 +156,15 @@ program
   .option("--model <model>", "Model name to use")
   .option("--data-dir <path>", "Path to the .openmanbo storage directory")
   .action(async (prompt: string, opts) => {
-    const config = loadConfig({
-      apiKey: opts.apiKey,
-      apiBaseUrl: opts.apiBaseUrl,
-      model: opts.model,
-      dataDir: opts.dataDir,
-    });
+    const { agent, mcp, skills } = await bootstrap(opts);
 
-    const dataDir = resolveDataDir(config.dataDir);
-    const [identity, skills, mcpConfig, qnaTopics] = await Promise.all([
-      readIdentity(dataDir),
-      readSkills(dataDir),
-      readMcpConfig(dataDir),
-      readQnaTopics(dataDir),
-    ]);
+    const routeResult = routeSkills({ message: prompt, skills });
 
-    const mcp = new McpManager();
-    const mergedMcpConfig = injectQnaTopics(mcpConfig, qnaTopics);
-    if (mergedMcpConfig) {
-      await mcp.connect(mergedMcpConfig);
-    }
-
-    const client = createLLMClient(config);
-    mcp.configureQna(client, config.model);
-
-    const toolConfig = withSkillTool({
-      skills,
-      tools: mcp.tools,
-      toolExecutor: mcp.call.bind(mcp),
-    });
-
-    const agent = new Agent({
-      client,
-      model: config.model,
-      systemPrompt: buildSystemPrompt({ identity, skills }),
-      ...(toolConfig.tools?.length ? toolConfig : {}),
-    });
-
-    const routeResult = routeSkills({
-      message: prompt,
-      skills,
-    });
-
-    for await (const chunk of agent.chat(routeResult.content || prompt, undefined, {
-      turnMessages: buildSkillRouteMessages(routeResult.activeSkills),
-    })) {
+    for await (const chunk of agent.chat(
+      routeResult.content || prompt,
+      undefined,
+      { turnMessages: buildSkillRouteMessages(routeResult.activeSkills) },
+    )) {
       process.stdout.write(chunk);
     }
     process.stdout.write("\n");
@@ -88,7 +172,10 @@ program
     await mcp.disconnect();
   });
 
-// ── interactive command: REPL session ──────────────────────────────
+/* ────────────────────────────────────────────────────────────────────
+ * interactive command: REPL session with slash commands
+ * ──────────────────────────────────────────────────────────────────── */
+
 program
   .command("interactive")
   .alias("i")
@@ -98,70 +185,48 @@ program
   .option("--model <model>", "Model name to use")
   .option("--data-dir <path>", "Path to the .openmanbo storage directory")
   .action(async (opts) => {
-    const config = loadConfig({
-      apiKey: opts.apiKey,
-      apiBaseUrl: opts.apiBaseUrl,
-      model: opts.model,
-      dataDir: opts.dataDir,
-    });
+    const { agent, toolPool, mcp, skills, model } = await bootstrap(opts);
 
-    const dataDir = resolveDataDir(config.dataDir);
-    const [identity, skills, mcpConfig, qnaTopics] = await Promise.all([
-      readIdentity(dataDir),
-      readSkills(dataDir),
-      readMcpConfig(dataDir),
-      readQnaTopics(dataDir),
-    ]);
-
-    const mcp = new McpManager();
-    const mergedMcpConfig = injectQnaTopics(mcpConfig, qnaTopics);
-    if (mergedMcpConfig) {
-      await mcp.connect(mergedMcpConfig);
-    }
-
-    const client = createLLMClient(config);
-    mcp.configureQna(client, config.model);
-
-    const toolConfig = withSkillTool({
-      skills,
-      tools: mcp.tools,
-      toolExecutor: mcp.call.bind(mcp),
-    });
-
-    const agent = new Agent({
-      client,
-      model: config.model,
-      systemPrompt: buildSystemPrompt({ identity, skills }),
-      ...(toolConfig.tools?.length ? toolConfig : {}),
-    });
+    // Set up command system
+    const commands = new CommandRegistry();
 
     const rl = readline.createInterface({ input, output });
 
-    console.log("🤖 Manbo interactive mode (type /exit to quit)\n");
+    console.log("🤖 Manbo interactive mode (type /help for commands)\n");
 
     while (true) {
       const userInput = await rl.question("You: ");
 
       if (!userInput.trim()) continue;
-      if (userInput.trim() === "/exit") {
-        console.log("Goodbye!");
-        rl.close();
-        break;
-      }
-      if (userInput.trim() === "/reset") {
-        agent.reset();
-        console.log("(conversation reset)\n");
-        continue;
+
+      // Check for slash commands
+      if (commands.isCommand(userInput)) {
+        const result = await commands.process(userInput, {
+          cwd: process.cwd(),
+          resetAgent: () => agent.reset(),
+          getHistoryLength: () => agent.getHistory().length,
+          toolNames: toolPool.toolNames,
+          model,
+        });
+
+        if (result) {
+          console.log(`\n${result.output}\n`);
+          if (result.exit) {
+            rl.close();
+            break;
+          }
+          continue;
+        }
       }
 
+      // Route through skills and stream response
       process.stdout.write("Manbo: ");
-      const routeResult = routeSkills({
-        message: userInput,
-        skills,
-      });
-      for await (const chunk of agent.chat(routeResult.content || userInput, undefined, {
-        turnMessages: buildSkillRouteMessages(routeResult.activeSkills),
-      })) {
+      const routeResult = routeSkills({ message: userInput, skills });
+      for await (const chunk of agent.chat(
+        routeResult.content || userInput,
+        undefined,
+        { turnMessages: buildSkillRouteMessages(routeResult.activeSkills) },
+      )) {
         process.stdout.write(chunk);
       }
       process.stdout.write("\n\n");
@@ -170,7 +235,10 @@ program
     await mcp.disconnect();
   });
 
-// ── discord command: run as a Discord bot ─────────────────────────
+/* ────────────────────────────────────────────────────────────────────
+ * discord command: run as a Discord bot
+ * ──────────────────────────────────────────────────────────────────── */
+
 program
   .command("discord")
   .description("Start the agent as a Discord bot")
@@ -195,13 +263,19 @@ program
       process.exit(1);
     }
 
+    const cwd = process.cwd();
     const dataDir = resolveDataDir(config.dataDir);
-    const [identity, skills, mcpConfig, qnaTopics] = await Promise.all([
+    const [identity, skills, mcpConfig, qnaTopics, context] = await Promise.all([
       readIdentity(dataDir),
       readSkills(dataDir),
       readMcpConfig(dataDir),
       readQnaTopics(dataDir),
+      getFullContext(cwd),
     ]);
+
+    // Create built-in tools
+    const builtinTools = createBuiltinTools({ cwd });
+    const toolPool = new ToolPool(builtinTools);
 
     const mcp = new McpManager();
     const mergedMcpConfig = injectQnaTopics(mcpConfig, qnaTopics);
@@ -212,15 +286,26 @@ program
     const client = createLLMClient(config);
     mcp.configureQna(client, config.model);
 
+    if (mcp.isActive) {
+      toolPool.setMcpTools(mcp.tools, mcp.call.bind(mcp));
+    }
+
+    const systemPrompt = buildSystemPrompt({
+      identity,
+      skills,
+      context,
+      toolNames: toolPool.toolNames,
+    });
+
     const channel = new DiscordChannel({
       botToken: config.discordBotToken,
       appConfig: config,
-      systemPrompt: buildSystemPrompt({ identity, skills }),
+      systemPrompt,
       skills,
-      ...(mcp.isActive
+      ...(toolPool.tools.length
         ? {
-            mcpTools: mcp.tools,
-            mcpToolExecutor: mcp.call.bind(mcp),
+            mcpTools: toolPool.tools,
+            mcpToolExecutor: toolPool.execute.bind(toolPool),
           }
         : {}),
     });
@@ -237,15 +322,32 @@ program
     await channel.start();
   });
 
-// ── daemon command: background supervisor ─────────────────────────
+/* ────────────────────────────────────────────────────────────────────
+ * daemon command: background supervisor
+ * ──────────────────────────────────────────────────────────────────── */
+
 program
   .command("daemon")
-  .description("Start the background daemon (supervisor) that manages the Agent lifecycle")
-  .option("--agent-script <path>", "Path to the agent entry script", "dist/cli/index.js")
+  .description(
+    "Start the background daemon (supervisor) that manages the Agent lifecycle",
+  )
+  .option(
+    "--agent-script <path>",
+    "Path to the agent entry script",
+    "dist/cli/index.js",
+  )
   .option("--agent-args <args...>", "Arguments forwarded to the agent process")
   .option("--admin-port <port>", "Port for the admin HTTP server", "7777")
-  .option("--build-command <cmd>", "Build command for rebuild cycles", "npm run build")
-  .option("--forgejo-poll-interval <interval>", "Forgejo notification polling interval (e.g. 5m, 30s)", "5m")
+  .option(
+    "--build-command <cmd>",
+    "Build command for rebuild cycles",
+    "npm run build",
+  )
+  .option(
+    "--forgejo-poll-interval <interval>",
+    "Forgejo notification polling interval (e.g. 5m, 30s)",
+    "5m",
+  )
   .option("--no-forgejo-poll", "Disable Forgejo notification polling")
   .action(async (opts) => {
     const agentScript = resolvePath(opts.agentScript);
@@ -293,7 +395,9 @@ program
     console.log("[daemon] Daemon is running. Press Ctrl+C to stop.");
   });
 
-/* ── Agent-side IPC setup ──────────────────────────────────────────── */
+/* ────────────────────────────────────────────────────────────────────
+ * Agent-side IPC setup
+ * ──────────────────────────────────────────────────────────────────── */
 
 function setupIpcListener(): void {
   if (!process.send) return;
@@ -301,7 +405,10 @@ function setupIpcListener(): void {
   process.on("message", (msg: IpcMessage) => {
     switch (msg.type) {
       case "build-error":
-        console.error("[agent] Received build error from daemon:\n", msg.stderr);
+        console.error(
+          "[agent] Received build error from daemon:\n",
+          msg.stderr,
+        );
         break;
       case "scheduled-task":
         if (msg.taskId === "forgejo-poll") {

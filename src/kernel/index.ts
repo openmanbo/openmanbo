@@ -13,6 +13,7 @@ export {
 	buildSkillPrompt,
 	DEFAULT_SYSTEM_PROMPT,
 	type SkillDefinition,
+	type SystemPromptOptions,
 } from "./prompt.js";
 export { withSkillTool } from "./skill-tool.js";
 export {

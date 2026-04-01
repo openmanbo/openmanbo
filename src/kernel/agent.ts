@@ -366,6 +366,56 @@ export class Agent {
   }
 
   /**
+   * Get a direct reference to the internal messages array.
+   * Use with care — mutations affect agent state.
+   */
+  getMessages(): ChatCompletionMessageParam[] {
+    return this.messages;
+  }
+
+  /**
+   * Replace the entire message array (preserving the system prompt if present
+   * in the replacement, otherwise keeping the original system prompt).
+   */
+  replaceMessages(messages: ChatCompletionMessageParam[]): void {
+    const existingSystem = this.messages.find((m) => m.role === "system");
+    const hasSystem = messages.some((m) => m.role === "system");
+    this.messages = hasSystem
+      ? [...messages]
+      : existingSystem
+        ? [existingSystem, ...messages]
+        : [...messages];
+  }
+
+  /**
+   * Rough token estimate based on message content lengths.
+   * Uses the ~4 chars per token heuristic.
+   */
+  getTokenEstimate(): number {
+    let charCount = 0;
+    for (const msg of this.messages) {
+      if (typeof msg.content === "string") {
+        charCount += msg.content.length;
+      } else if (Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          if ("text" in part && typeof part.text === "string") {
+            charCount += part.text.length;
+          }
+        }
+      }
+      // Count tool call arguments
+      const calls = (msg as { tool_calls?: Array<{ function?: { arguments?: string } }> })
+        .tool_calls;
+      if (calls) {
+        for (const tc of calls) {
+          charCount += tc.function?.arguments?.length ?? 0;
+        }
+      }
+    }
+    return Math.ceil(charCount / 4);
+  }
+
+  /**
    * Reset conversation history, optionally keeping the system prompt.
    */
   reset(): void {

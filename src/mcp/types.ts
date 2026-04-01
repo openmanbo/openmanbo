@@ -138,6 +138,17 @@ export interface BuiltinToolsConfig {
 }
 
 /**
+ * Describes a resource exposed by an MCP server.
+ */
+export interface McpResource {
+  server: string;
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+}
+
+/**
  * A single MCP server entry can be either stdio or HTTP.
  */
 export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig;

@@ -146,17 +146,35 @@ function messageToRenderLines(item: MessageItem, width: number): RenderLine[] {
     }
   }
 
-  // Add a blank separator line after user and assistant messages for readability
-  if (item.role === "user" || item.role === "assistant") {
-    result.push({
-      key: `${item.id}-blank`,
-      role: item.role,
-      isFirst: false,
-      text: "",
-    });
+  return result;
+}
+
+function trimBoundaryBlankLines(lines: RenderLine[]): RenderLine[] {
+  let start = 0;
+  let end = lines.length;
+
+  while (start < end && lines[start]?.text === "") start += 1;
+  while (end > start && lines[end - 1]?.text === "") end -= 1;
+
+  return lines.slice(start, end);
+}
+
+function shouldInsertBlockSeparator(prevRole: MessageRole, nextRole: MessageRole): boolean {
+  const toolRoles = new Set<MessageRole>(["tool-running", "tool-done", "tool-error"]);
+
+  if (toolRoles.has(prevRole) && toolRoles.has(nextRole)) {
+    return false;
   }
 
-  return result;
+  const streamRoles = new Set<MessageRole>([
+    "user",
+    "assistant",
+    "tool-running",
+    "tool-done",
+    "tool-error",
+  ]);
+
+  return streamRoles.has(prevRole) && streamRoles.has(nextRole);
 }
 
 function sanitizeTextInput(value: string): string {
@@ -403,9 +421,24 @@ function TuiApp(props: TuiAppProps): JSX.Element {
 
   const allRenderLines = useMemo(() => {
     const lines: RenderLine[] = [];
-    for (const item of messages) {
-      lines.push(...messageToRenderLines(item, textWidth));
+
+    for (let i = 0; i < messages.length; i += 1) {
+      const item = messages[i]!;
+      const nextItem = messages[i + 1];
+      const itemLines = trimBoundaryBlankLines(messageToRenderLines(item, textWidth));
+
+      lines.push(...itemLines);
+
+      if (nextItem && shouldInsertBlockSeparator(item.role, nextItem.role)) {
+        lines.push({
+          key: `sep-${item.id}-${nextItem.id}`,
+          role: nextItem.role,
+          isFirst: false,
+          text: "",
+        });
+      }
     }
+
     return lines;
   }, [messages, textWidth]);
 

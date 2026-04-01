@@ -116,6 +116,18 @@ export class ToolPool {
   }
 
   /**
+   * Register additional built-in tools (e.g. subagent tools).
+   * Skips tools whose name conflicts with an existing built-in tool.
+   */
+  addTools(tools: Tool[]): void {
+    for (const tool of tools) {
+      if (!this.builtinByName.has(tool.spec.name)) {
+        this.builtinByName.set(tool.spec.name, tool);
+      }
+    }
+  }
+
+  /**
    * Add MCP tools to the pool.
    * MCP tools with the same name as a built-in tool are silently skipped.
    */

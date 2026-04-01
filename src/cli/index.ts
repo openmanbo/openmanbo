@@ -42,6 +42,13 @@ import {
   isForgejoProcessing,
 } from "../trigger/index.js";
 import { createBuiltinTools, ToolPool } from "../tools/index.js";
+import {
+  TaskManager,
+  AgentTool,
+  TaskListTool,
+  TaskGetTool,
+  TaskStopTool,
+} from "../subagent/index.js";
 import { getFullContext } from "../context/index.js";
 import { CommandRegistry } from "../commands/index.js";
 import { getCompactPrompt } from "../compact/index.js";
@@ -117,6 +124,27 @@ async function bootstrap(opts: {
   if (mcp.isActive) {
     toolPool.setMcpTools(mcp.tools, mcp.call.bind(mcp));
   }
+
+  // Set up subagent system
+  const taskManager = new TaskManager();
+  const agentFactory = async (prompt: string) => {
+    const subAgent = new Agent({
+      client,
+      model: config.model,
+      systemPrompt: "You are a sub-agent. Complete the task described below, then return a concise summary of what you did and the result.",
+      tools: toolPool.tools,
+      toolExecutor: toolPool.execute.bind(toolPool),
+    });
+    const result = await subAgent.run(prompt);
+    return { result };
+  };
+
+  toolPool.addTools([
+    new AgentTool(taskManager, agentFactory),
+    new TaskListTool(taskManager),
+    new TaskGetTool(taskManager),
+    new TaskStopTool(taskManager),
+  ]);
 
   // Also add skill tool
   const skillToolConfig = withSkillTool({

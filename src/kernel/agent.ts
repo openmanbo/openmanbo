@@ -25,10 +25,33 @@ export interface AgentOptions {
     name: string,
     args: Record<string, unknown>,
   ) => Promise<ToolExecutionOutput>;
+  /** Optional event handlers for tool execution lifecycle */
+  eventHandlers?: AgentEventHandlers;
 }
 
 export interface AgentTurnOptions {
   turnMessages?: ChatCompletionMessageParam[];
+}
+
+export interface AgentToolEventPayload {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  argumentsRaw: string;
+}
+
+export interface AgentToolResultEventPayload extends AgentToolEventPayload {
+  result: string;
+}
+
+export interface AgentToolErrorEventPayload extends AgentToolEventPayload {
+  error: string;
+}
+
+export interface AgentEventHandlers {
+  onToolCallStart?: (payload: AgentToolEventPayload) => void;
+  onToolCallSuccess?: (payload: AgentToolResultEventPayload) => void;
+  onToolCallError?: (payload: AgentToolErrorEventPayload) => void;
 }
 
 /**
@@ -43,6 +66,7 @@ export class Agent {
   private toolExecutor:
     | ((name: string, args: Record<string, unknown>) => Promise<ToolExecutionOutput>)
     | undefined;
+  private eventHandlers: AgentEventHandlers;
 
   constructor(options: AgentOptions) {
     this.client = options.client;
@@ -50,10 +74,15 @@ export class Agent {
     this.messages = [];
     this.tools = options.tools?.length ? options.tools : undefined;
     this.toolExecutor = options.toolExecutor;
+    this.eventHandlers = options.eventHandlers ?? {};
 
     if (options.systemPrompt) {
       this.messages.push({ role: "system", content: options.systemPrompt });
     }
+  }
+
+  setEventHandlers(eventHandlers: AgentEventHandlers | undefined): void {
+    this.eventHandlers = eventHandlers ?? {};
   }
 
   /**
@@ -91,6 +120,28 @@ export class Agent {
         ].join("\n\n"),
       },
     ];
+  }
+
+  private parseToolArguments(argumentsRaw: string): Record<string, unknown> {
+    try {
+      return JSON.parse(argumentsRaw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
+  private buildToolEventPayload(
+    id: string,
+    name: string,
+    args: Record<string, unknown>,
+    argumentsRaw: string,
+  ): AgentToolEventPayload {
+    return {
+      id,
+      name,
+      args,
+      argumentsRaw,
+    };
   }
 
   /**
@@ -158,12 +209,14 @@ export class Agent {
         }
       }
 
-      if (toolCalls.length > 0 && this.toolExecutor) {
+      const finalizedToolCalls = toolCalls.flatMap((tc) => (tc ? [tc] : []));
+
+      if (finalizedToolCalls.length > 0 && this.toolExecutor) {
         // Push the assistant message with tool_calls
         turnMessages.push({
           role: "assistant",
           content: fullResponse || null,
-          tool_calls: toolCalls.map((tc) => ({
+          tool_calls: finalizedToolCalls.map((tc) => ({
             id: tc.id,
             type: "function" as const,
             function: { name: tc.name, arguments: tc.argumentsRaw },
@@ -174,21 +227,34 @@ export class Agent {
         let compactSummary: string | undefined;
         const toolMessages: ChatCompletionMessageParam[] = [];
 
-        for (const tc of toolCalls) {
-          let args: Record<string, unknown> = {};
+        for (const tc of finalizedToolCalls) {
+          const args = this.parseToolArguments(tc.argumentsRaw);
+          const eventPayload = this.buildToolEventPayload(
+            tc.id,
+            tc.name,
+            args,
+            tc.argumentsRaw,
+          );
+
+          this.eventHandlers.onToolCallStart?.(eventPayload);
+
+          let normalizedResult;
           try {
-            args = JSON.parse(tc.argumentsRaw) as Record<string, unknown>;
-          } catch {
-            // leave args as empty object if JSON is malformed
-          }
-          let toolResult: ToolExecutionOutput;
-          try {
-            toolResult = await this.toolExecutor(tc.name, args);
+            const toolResult = await this.toolExecutor(tc.name, args);
+            normalizedResult = normalizeToolExecutionOutput(toolResult);
+            this.eventHandlers.onToolCallSuccess?.({
+              ...eventPayload,
+              result: normalizedResult.content,
+            });
           } catch (err) {
-            toolResult = `Error: ${String(err)}`;
+            const error = String(err);
+            this.eventHandlers.onToolCallError?.({
+              ...eventPayload,
+              error,
+            });
+            normalizedResult = normalizeToolExecutionOutput(`Error: ${error}`);
           }
 
-          const normalizedResult = normalizeToolExecutionOutput(toolResult);
           const summary = normalizedResult.compactContext?.summary?.trim();
           if (summary) {
             compactSummary = summary;
@@ -267,20 +333,33 @@ export class Agent {
           // Only handle standard function tool calls
           if (tc.type !== "function") continue;
           const fnTc = tc as ChatCompletionMessageFunctionToolCall;
-          let args: Record<string, unknown> = {};
+          const args = this.parseToolArguments(fnTc.function.arguments);
+          const eventPayload = this.buildToolEventPayload(
+            fnTc.id,
+            fnTc.function.name,
+            args,
+            fnTc.function.arguments,
+          );
+
+          this.eventHandlers.onToolCallStart?.(eventPayload);
+
+          let normalizedResult;
           try {
-            args = JSON.parse(fnTc.function.arguments) as Record<string, unknown>;
-          } catch {
-            // leave args as empty object
-          }
-          let toolResult: ToolExecutionOutput;
-          try {
-            toolResult = await this.toolExecutor(fnTc.function.name, args);
+            const toolResult = await this.toolExecutor(fnTc.function.name, args);
+            normalizedResult = normalizeToolExecutionOutput(toolResult);
+            this.eventHandlers.onToolCallSuccess?.({
+              ...eventPayload,
+              result: normalizedResult.content,
+            });
           } catch (err) {
-            toolResult = `Error: ${String(err)}`;
+            const error = String(err);
+            this.eventHandlers.onToolCallError?.({
+              ...eventPayload,
+              error,
+            });
+            normalizedResult = normalizeToolExecutionOutput(`Error: ${error}`);
           }
 
-          const normalizedResult = normalizeToolExecutionOutput(toolResult);
           const summary = normalizedResult.compactContext?.summary?.trim();
           if (summary) {
             compactSummary = summary;

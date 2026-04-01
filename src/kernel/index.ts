@@ -1,5 +1,11 @@
 export { Agent } from "./agent.js";
-export type { AgentOptions } from "./agent.js";
+export type {
+  AgentOptions,
+  AgentEventHandlers,
+  AgentToolEventPayload,
+  AgentToolResultEventPayload,
+  AgentToolErrorEventPayload,
+} from "./agent.js";
 export { createLLMClient } from "./llm.js";
 export {
 	buildSystemPrompt,
